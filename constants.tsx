@@ -1,23 +1,28 @@
-
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
-*/
+ */
 import { BuildingConfig, BuildingType, Upgrade, Stock, Policy } from './types';
 
-// Configurações do Mapa
-export const GRID_SIZE = 15;
+// Configurações Globais do Mapa
+export const GRID_SIZE = 15; // Tamanho da grade (15x15 tiles)
 
-// Configurações do Jogo
-export const TICK_RATE_MS = 60000; // Speed up tick to 1 min for better feedback on policies
-export const INITIAL_COOKIES = 1500;
+// Configurações de Gameplay
+export const TICK_RATE_MS = 60000; // Duração de um "dia" no jogo em milissegundos (60 segundos)
+export const INITIAL_COOKIES = 1500; // Quantidade inicial de Cookies (Dinheiro)
 
+/**
+ * Definição de todos os prédios e suas propriedades.
+ * Contém custo, geração de recursos, requisitos de desbloqueio e bônus.
+ * 
+ * NOTA: Todos os textos de exibição estão em Português do Brasil.
+ */
 export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
   [BuildingType.None]: {
     type: BuildingType.None,
     cost: 0,
     name: 'Demolir',
-    description: 'Limpar terreno',
+    description: 'Limpar terreno para novas obras',
     color: '#ef4444', 
     emoji: '❌',
     popGen: 0,
@@ -29,7 +34,7 @@ export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
     type: BuildingType.Road,
     cost: 5,
     name: 'Estrada',
-    description: 'Conecta áreas',
+    description: 'Conecta áreas e melhora o transporte',
     color: '#374151',
     emoji: '🛣️',
     popGen: 0,
@@ -42,19 +47,19 @@ export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
     type: BuildingType.Residential,
     cost: 50,
     name: 'Residência',
-    description: '+5 Habitantes',
+    description: 'Lar para novos moradores (+5 Hab)',
     color: '#f87171', 
     emoji: '🏠',
     popGen: 5,
-    cookieGen: 5, // Small tax
+    cookieGen: 5, // Pequena taxa de impostos residenciais
     unlockPop: 0,
-    energyDelta: -1, // Consumes energy
+    energyDelta: -1, // Consome energia
   },
   [BuildingType.Commercial]: {
     type: BuildingType.Commercial,
     cost: 150,
     name: 'Mercado',
-    description: '+15 Cookies',
+    description: 'Gera renda com comércio (+15 Cookies)',
     color: '#60a5fa', 
     emoji: '🏪',
     popGen: 0,
@@ -66,19 +71,19 @@ export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
     type: BuildingType.Industrial,
     cost: 300,
     name: 'Fábrica Tech',
-    description: '+40 Cookies',
+    description: 'Alta produção de Cookies (+40 Cookies)',
     color: '#facc15', 
     emoji: '🏭',
     popGen: 0,
     cookieGen: 40,
     unlockPop: 50,
-    energyDelta: -5,
+    energyDelta: -5, // Consome bastante energia
   },
   [BuildingType.Park]: {
     type: BuildingType.Park,
     cost: 30,
     name: 'Praça',
-    description: 'Qualidade de vida',
+    description: 'Aumenta a qualidade de vida e o verde',
     color: '#4ade80', 
     emoji: '🌳',
     popGen: 2,
@@ -91,32 +96,32 @@ export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
     type: BuildingType.WindTurbine,
     cost: 100,
     name: 'Eólica',
-    description: '+8 Energia (Sustentável)',
+    description: 'Energia limpa e sustentável (+8 Energia)',
     color: '#a3e635',
     emoji: '💨',
     popGen: 0,
     cookieGen: 5,
     unlockPop: 0,
-    energyDelta: 8, // Produces energy
+    energyDelta: 8, // Produz energia para a cidade
     satisfactionBonus: { type: 'environment', amount: 5 }
   },
   [BuildingType.DataCenter]: {
     type: BuildingType.DataCenter,
     cost: 500,
     name: 'Data Center',
-    description: '+80 Cookies',
+    description: 'Hub de tecnologia (+80 Cookies)',
     color: '#6366f1',
     emoji: '💾',
     popGen: 0,
     cookieGen: 80,
     unlockPop: 150,
-    energyDelta: -15, // High consumption
+    energyDelta: -15, // Altíssimo consumo de energia
   },
   [BuildingType.BeachResort]: {
     type: BuildingType.BeachResort,
     cost: 1000,
     name: 'Resort',
-    description: '+150 Cookies',
+    description: 'Turismo de luxo na orla (+150 Cookies)',
     color: '#f472b6',
     emoji: '🏖️',
     popGen: 10,
@@ -129,7 +134,7 @@ export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
     type: BuildingType.Metro,
     cost: 400,
     name: 'Metrô',
-    description: 'Transporte rápido (+20 Pop)',
+    description: 'Transporte rápido de massa (+20 Pop)',
     color: '#dc2626',
     emoji: '🚇',
     popGen: 20,
@@ -142,7 +147,7 @@ export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
     type: BuildingType.School,
     cost: 600,
     name: 'Escola',
-    description: 'Educação Tech (+5 Pop, +10 Cookies)',
+    description: 'Educação Tech para o futuro (+Educação)',
     color: '#fb923c',
     emoji: '🏫',
     popGen: 5,
@@ -155,7 +160,7 @@ export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
     type: BuildingType.Hospital,
     cost: 800,
     name: 'Hospital',
-    description: 'Saúde (+30 Pop)',
+    description: 'Serviços de saúde essenciais (+Saúde)',
     color: '#ffffff',
     emoji: '🏥',
     popGen: 30,
@@ -168,7 +173,7 @@ export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
     type: BuildingType.CityHall,
     cost: 2000,
     name: 'Prefeitura',
-    description: 'Habilita Políticas',
+    description: 'Centro administrativo. Habilita Leis.',
     color: '#e2e8f0',
     emoji: '🏛️',
     popGen: 5,
@@ -181,17 +186,20 @@ export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
     type: BuildingType.SolarFarm,
     cost: 350,
     name: 'Solar',
-    description: '+15 Energia',
+    description: 'Alta geração de energia limpa (+15 Energia)',
     color: '#1e3a8a',
     emoji: '☀️',
     popGen: 0,
     cookieGen: 10,
     unlockPop: 80,
-    energyDelta: 15, // High Production
+    energyDelta: 15, // Alta Produção
     satisfactionBonus: { type: 'environment', amount: 8 }
   },
 };
 
+/**
+ * Lista inicial de melhorias (Upgrades) disponíveis para compra no ID Digital.
+ */
 export const INITIAL_UPGRADES: Upgrade[] = [
   {
     id: 'wifi_6g',
@@ -205,7 +213,7 @@ export const INITIAL_UPGRADES: Upgrade[] = [
   {
     id: 'delivery_drones',
     name: 'Drones de Entrega',
-    description: 'Mercados geram 50% mais Cookies.',
+    description: 'Mercados geram 50% mais Cookies com entregas rápidas.',
     cost: 1200,
     targetType: BuildingType.Commercial,
     multiplier: 1.5,
@@ -223,7 +231,7 @@ export const INITIAL_UPGRADES: Upgrade[] = [
   {
     id: 'tourism_ads',
     name: 'Propaganda Turística',
-    description: 'Resorts geram o dobro de Cookies.',
+    description: 'Resorts geram o dobro de Cookies atraindo turistas.',
     cost: 5000,
     targetType: BuildingType.BeachResort,
     multiplier: 2.0,
@@ -231,17 +239,17 @@ export const INITIAL_UPGRADES: Upgrade[] = [
   },
   {
     id: 'smart_grid',
-    name: 'Smart Grid',
-    description: 'Turbinas Eólicas e Solar 50% mais eficientes.',
+    name: 'Rede Inteligente (Smart Grid)',
+    description: 'Turbinas Eólicas e Solar tornam-se 50% mais eficientes.',
     cost: 800,
-    targetType: BuildingType.WindTurbine, // Also affects solar in logic
+    targetType: BuildingType.WindTurbine, // Afeta também Solar na lógica
     multiplier: 1.5,
     purchased: false,
   },
   {
     id: 'subway_expansion',
     name: 'Trens Magnéticos',
-    description: 'Metrôs suportam o dobro de população.',
+    description: 'Metrôs suportam o dobro de população com levitação magnética.',
     cost: 1500,
     targetType: BuildingType.Metro,
     multiplier: 2.0,
@@ -258,11 +266,14 @@ export const INITIAL_UPGRADES: Upgrade[] = [
   }
 ];
 
+/**
+ * Lista inicial de Ações na Bolsa de Valores.
+ */
 export const INITIAL_STOCKS: Stock[] = [
   {
     id: 's1',
     symbol: 'CRNCH',
-    name: 'Cookie Crunch Ltd',
+    name: 'Cookie Crunch Ltda',
     description: 'Conglomerado de alimentos básicos.',
     price: 10,
     volatility: 0.02, 
@@ -272,7 +283,7 @@ export const INITIAL_STOCKS: Stock[] = [
   {
     id: 's2',
     symbol: 'VOLT',
-    name: 'Gridline Energy',
+    name: 'Gridline Energia',
     description: 'Infraestrutura e energia renovável.',
     price: 50,
     volatility: 0.05, 
@@ -291,6 +302,9 @@ export const INITIAL_STOCKS: Stock[] = [
   }
 ];
 
+/**
+ * Políticas Públicas disponíveis na Prefeitura.
+ */
 export const POLICIES: Policy[] = [
   {
     id: 'tax_break',

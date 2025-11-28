@@ -1,14 +1,13 @@
-
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
-*/
+ */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Grid, TileData, BuildingType, CityStats, AIGoal, NewsItem, WeatherType, Upgrade, Stock, PlayerConfig, Policy } from './types';
 import { GRID_SIZE, BUILDINGS, TICK_RATE_MS, INITIAL_COOKIES, INITIAL_UPGRADES, INITIAL_STOCKS, POLICIES } from './constants';
 import IsoMap from './components/IsoMap';
 import UIOverlay from './components/UIOverlay';
-import StartScreen from './components/StartScreen';
+import LandingPage from './components/LandingPage';
 import DigitalID from './components/DigitalID';
 import StockMarket from './components/StockMarket';
 import CharacterCreator from './components/CharacterCreator';
@@ -16,14 +15,13 @@ import BuildingInspector from './components/BuildingInspector';
 import CityPolicies from './components/CityPolicies';
 import { generateCityGoal, generateNewsEvent } from './services/geminiService';
 
+// Função para criar o grid inicial (Mapa) com terrenos vazios
 const createInitialGrid = (): Grid => {
   const grid: Grid = [];
-  const center = GRID_SIZE / 2;
-
+  
   for (let y = 0; y < GRID_SIZE; y++) {
     const row: TileData[] = [];
     for (let x = 0; x < GRID_SIZE; x++) {
-      const dist = Math.sqrt((x-center)*(x-center) + (y-center)*(y-center));
       row.push({ x, y, buildingType: BuildingType.None });
     }
     grid.push(row);
@@ -31,9 +29,10 @@ const createInitialGrid = (): Grid => {
   return grid;
 };
 
-// Simple BFS Pathfinding
+// Algoritmo BFS (Busca em Largura) para encontrar o caminho mais curto
+// Usado para movimentação do personagem clicando no chão
 const findPath = (start: {x: number, y: number}, end: {x: number, y: number}, grid: Grid): {x: number, y: number}[] => {
-    // Only None (grass), Park, and Road are walkable
+    // Verifica se o tile é "andável" (Grama, Parque ou Estrada)
     const isWalkable = (x: number, y: number) => {
         if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return false;
         const type = grid[y][x].buildingType;
@@ -68,16 +67,21 @@ const findPath = (start: {x: number, y: number}, end: {x: number, y: number}, gr
 };
 
 function App() {
-  const [gameStarted, setGameStarted] = useState(false);
-  const [showCharCreator, setShowCharCreator] = useState(false);
-  const [isInitialCharSetup, setIsInitialCharSetup] = useState(false);
+  // Estado que controla a tela atual: 'landing' (Inicial), 'character' (Criação), 'game' (Jogo Principal)
+  const [viewState, setViewState] = useState<'landing' | 'character' | 'game'>('landing');
   
-  const [aiEnabled, setAiEnabled] = useState(true);
+  const [gameStarted, setGameStarted] = useState(false); // Controla o loop lógico do jogo
+  const [isInitialCharSetup, setIsInitialCharSetup] = useState(false); // Se é a primeira vez criando o char
+  
+  const [aiEnabled, setAiEnabled] = useState(true); // Se a IA do Gemini está ligada
+  
+  // Controle de Visibilidade dos Modais
   const [showID, setShowID] = useState(false);
   const [showMarket, setShowMarket] = useState(false);
   const [showPolicies, setShowPolicies] = useState(false);
   const [inspectedBuilding, setInspectedBuilding] = useState<BuildingType | null>(null);
 
+  // Estados principais do Jogo
   const [grid, setGrid] = useState<Grid>(createInitialGrid);
   const [stats, setStats] = useState<CityStats>({ 
     cookies: INITIAL_COOKIES, 
@@ -101,7 +105,7 @@ function App() {
     activePolicies: []
   });
   
-  // Player Avatar State
+  // Configuração do Personagem (Avatar)
   const [player, setPlayer] = useState<PlayerConfig>({
       name: 'Prefeito',
       color: '#eab308',
@@ -114,14 +118,16 @@ function App() {
       face: 'happy'
   });
 
-  const [selectedTool, setSelectedTool] = useState<BuildingType | null>(null);
-  const [upgrades, setUpgrades] = useState<Upgrade[]>(INITIAL_UPGRADES);
-  const [stocks, setStocks] = useState<Stock[]>(INITIAL_STOCKS);
+  const [selectedTool, setSelectedTool] = useState<BuildingType | null>(null); // Ferramenta selecionada no dock
+  const [upgrades, setUpgrades] = useState<Upgrade[]>(INITIAL_UPGRADES); // Lista de melhorias
+  const [stocks, setStocks] = useState<Stock[]>(INITIAL_STOCKS); // Ações da bolsa
   
+  // Estados da IA (Gemini)
   const [currentGoal, setCurrentGoal] = useState<AIGoal | null>(null);
   const [isGeneratingGoal, setIsGeneratingGoal] = useState(false);
   const [newsFeed, setNewsFeed] = useState<NewsItem[]>([]);
   
+  // Refs para acesso dentro de intervalos e loops (evita closures antigas)
   const gridRef = useRef(grid);
   const statsRef = useRef(stats);
   const goalRef = useRef(currentGoal);
@@ -134,9 +140,9 @@ function App() {
   useEffect(() => { aiEnabledRef.current = aiEnabled; }, [aiEnabled]);
   useEffect(() => { upgradesRef.current = upgrades; }, [upgrades]);
 
-  // --- Auto Save/Load System ---
+  // --- Sistema de Salvamento Automático (LocalStorage) ---
   useEffect(() => {
-    // Load on Mount
+    // Carregar ao montar o componente
     const savedData = localStorage.getItem('gridline_save');
     if (savedData) {
         try {
@@ -146,9 +152,8 @@ function App() {
             if(data.player) setPlayer(data.player);
             if(data.upgrades) setUpgrades(data.upgrades);
             if(data.stocks) setStocks(data.stocks);
-            // Don't auto-start to allow main menu
         } catch(e) {
-            console.error("Save file corrupt", e);
+            console.error("Arquivo de save corrompido", e);
         }
     }
   }, []);
@@ -164,16 +169,16 @@ function App() {
             stocks: stocks
         };
         localStorage.setItem('gridline_save', JSON.stringify(dataToSave));
-        console.log("Auto-saved game");
-    }, 10000); // Save every 10s
+    }, 10000); // Salva a cada 10 segundos
     return () => clearInterval(saveInterval);
   }, [gameStarted, player, stocks]);
 
 
   const addNewsItem = useCallback((item: NewsItem) => {
-    setNewsFeed(prev => [...prev.slice(-12), item]); 
+    setNewsFeed(prev => [...prev.slice(-12), item]); // Mantém apenas as últimas 12 notícias
   }, []);
 
+  // Busca nova meta da IA
   const fetchNewGoal = useCallback(async () => {
     if (isGeneratingGoal || !aiEnabledRef.current) return;
     setIsGeneratingGoal(true);
@@ -183,25 +188,19 @@ function App() {
     if (newGoal) {
       setCurrentGoal(newGoal);
     } else {
-      if(aiEnabledRef.current) setTimeout(fetchNewGoal, 5000);
+      if(aiEnabledRef.current) setTimeout(fetchNewGoal, 5000); // Tenta de novo em 5s se falhar
     }
     setIsGeneratingGoal(false);
   }, [isGeneratingGoal]); 
 
+  // Gera notícia aleatória usando a IA
   const fetchNews = useCallback(async () => {
-    if (!aiEnabledRef.current || Math.random() > 0.15) return; 
+    if (!aiEnabledRef.current || Math.random() > 0.15) return; // 15% de chance por tick
     const news = await generateNewsEvent(statsRef.current, null);
     if (news) addNewsItem(news);
   }, [addNewsItem]);
 
-  useEffect(() => {
-    if (!gameStarted) return;
-    if (!showCharCreator) {
-        // Goal fetching init
-    }
-  }, [gameStarted, showCharCreator]);
-
-  // --- Stock Market Simulation Loop ---
+  // --- Loop da Bolsa de Valores ---
   useEffect(() => {
       if (!gameStarted) return;
       const marketInterval = setInterval(() => {
@@ -214,11 +213,11 @@ function App() {
                   return { ...stock, price: newPrice, history: newHistory };
               });
           });
-      }, 5000);
+      }, 5000); // Atualiza preços a cada 5 segundos
       return () => clearInterval(marketInterval);
   }, [gameStarted]);
 
-  // --- Satisfaction Calculation Helper ---
+  // --- Helper para Calcular Satisfação Geral e por Categorias ---
   const calculateSatisfaction = (counts: Record<string, number>): {total: number, breakdown: any} => {
     const resCount = counts[BuildingType.Residential] || 0;
     const indCount = counts[BuildingType.Industrial] || 0;
@@ -248,7 +247,7 @@ function App() {
     };
   };
 
-  // --- Game Loop ---
+  // --- Loop Principal do Jogo (Tick) ---
   useEffect(() => {
     if (!gameStarted) return;
 
@@ -259,12 +258,12 @@ function App() {
       let totalEnergyConsumed = 0;
       let buildingCounts: Record<string, number> = {};
 
-      // 1. Calculate Multipliers (Upgrades + Policies)
+      // 1. Calcular Multiplicadores (Baseado em Upgrades e Políticas)
       const multipliers: Record<string, number> = {};
       Object.values(BuildingType).forEach(t => multipliers[t] = 1);
       let globalCookieMultiplier = 1;
 
-      // Upgrades
+      // Aplicar Upgrades comprados
       upgradesRef.current.forEach(u => {
         if(u.purchased) {
            if(u.targetType === 'Global') {
@@ -275,7 +274,7 @@ function App() {
         }
       });
 
-      // Policies
+      // Aplicar Políticas Ativas
       let policyCost = 0;
       statsRef.current.activePolicies.forEach(policyId => {
           const policy = POLICIES.find(p => p.id === policyId);
@@ -284,11 +283,11 @@ function App() {
               if (policy.effect.target === 'cookies' && policy.effect.type === 'multiplier') {
                   globalCookieMultiplier *= policy.effect.value;
               }
-              // Other effects handled in satisfaction/pop logic later
+              // Outros efeitos são tratados na satisfação/população depois
           }
       });
 
-      // 2. Iterate Buildings
+      // 2. Iterar sobre construções do Grid para somar recursos
       gridRef.current.flat().forEach(tile => {
         if (tile.buildingType !== BuildingType.None) {
           const config = BUILDINGS[tile.buildingType];
@@ -297,11 +296,11 @@ function App() {
           dailyCookies += config.cookieGen * multiplier;
           dailyPopGrowth += config.popGen * multiplier; 
           
-          const eDelta = config.energyDelta; // Base energy
-          // Apply Upgrade buffs to energy production (Smart Grid)
+          const eDelta = config.energyDelta; // Energia base
+          // Aplicar buffs de energia (ex: Smart Grid)
           let eMult = 1;
           if ((tile.buildingType === BuildingType.WindTurbine || tile.buildingType === BuildingType.SolarFarm) && multipliers[BuildingType.WindTurbine] > 1) {
-              eMult = multipliers[BuildingType.WindTurbine]; // Reuse Smart Grid logic
+              eMult = multipliers[BuildingType.WindTurbine];
           }
 
           if (eDelta > 0) totalEnergyProduced += eDelta * eMult;
@@ -311,10 +310,10 @@ function App() {
         }
       });
 
-      // 3. Energy Penalty
+      // 3. Penalidade de Energia (Apagão)
       const energyBalance = totalEnergyProduced - totalEnergyConsumed;
       if (energyBalance < 0) {
-          globalCookieMultiplier *= 0.5; // Blackout penalty
+          globalCookieMultiplier *= 0.5; // Apagão corta produção pela metade
           if (statsRef.current.energy.balance >= 0) {
              addNewsItem({id: Date.now().toString(), text: "APAGÃO! Produção reduzida em 50%. Construa mais energia!", type: 'negative'});
           }
@@ -322,31 +321,31 @@ function App() {
 
       dailyCookies = Math.floor(dailyCookies * globalCookieMultiplier) - policyCost;
 
-      // 4. Update Stats
+      // 4. Atualizar Estatísticas Globais
       const resCount = buildingCounts[BuildingType.Residential] || 0;
       const maxPop = resCount * 50; 
 
       setStats(prev => {
         let newPop = prev.population + Math.floor(dailyPopGrowth);
         
-        // Policy Pop Buff
+        // Buff de população por política (Vida Noturna)
         const popPolicy = prev.activePolicies.find(id => id === 'night_life');
         if (popPolicy) newPop = Math.floor(newPop * 1.1);
 
         if (newPop > maxPop) newPop = maxPop; 
         if (resCount === 0 && prev.population > 0) newPop = Math.max(0, prev.population - 5); 
 
-        // Weather Cycle
+        // Ciclo do Clima (Dia/Noite/Chuva)
         let nextWeather: WeatherType = prev.weather;
         if (prev.day % 10 === 0) nextWeather = 'rain';
         else if (prev.day % 10 === 2) nextWeather = 'sunny';
         else if (prev.day % 20 === 15) nextWeather = 'night';
         else if (prev.day % 20 === 19) nextWeather = 'sunny';
 
-        // Satisfaction
+        // Recalcula Satisfação
         const satData = calculateSatisfaction(buildingCounts);
         
-        // Apply Policy Satisfaction Buffs
+        // Aplica Políticas de Satisfação
         prev.activePolicies.forEach(pid => {
             const p = POLICIES.find(pol => pol.id === pid);
             if (p && p.effect.target === 'satisfaction') satData.total += p.effect.value;
@@ -371,7 +370,7 @@ function App() {
           }
         };
         
-        // Goal Check
+        // Checar Metas (Quests)
         const goal = goalRef.current;
         if (aiEnabledRef.current && goal && !goal.completed) {
           let isMet = false;
@@ -396,36 +395,36 @@ function App() {
     return () => clearInterval(intervalId);
   }, [fetchNews, gameStarted]);
 
-  // --- Handlers ---
+  // --- Manipuladores de Eventos (Handlers) ---
 
   const handleTileClick = useCallback((x: number, y: number) => {
-    if (!gameStarted || showCharCreator) return; 
+    if (!gameStarted || viewState === 'character') return; 
 
     const currentGrid = gridRef.current;
     const currentStats = statsRef.current;
     const tool = selectedTool; 
     
-    // Mode 1: Cursor Mode (Move or Inspect)
+    // Modo 1: Cursor (Mover ou Inspecionar) - Sem ferramenta selecionada
     if (tool === null) {
         const clickedType = currentGrid[y][x].buildingType;
         if (clickedType !== BuildingType.None && clickedType !== BuildingType.Road) {
-             setInspectedBuilding(clickedType);
+             setInspectedBuilding(clickedType); // Abre o inspetor
              return;
         }
         const path = findPath({x: player.x, y: player.y}, {x, y}, currentGrid);
         if (path.length > 0) {
-            setPlayer(prev => ({ ...prev, path }));
+            setPlayer(prev => ({ ...prev, path })); // Inicia movimento
         }
         return;
     }
 
-    // Mode 2: Building/Demolish
+    // Modo 2: Construir / Demolir
     if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return;
 
     const currentTile = currentGrid[y][x];
     const buildingConfig = BUILDINGS[tool];
 
-    // Don't build on top of player
+    // Não construir em cima do jogador para evitar ficar preso
     if (x === player.x && y === player.y) {
         addNewsItem({id: Date.now().toString(), text: "Não pode construir em cima do prefeito!", type: 'negative'});
         return;
@@ -447,7 +446,7 @@ function App() {
     }
 
     if (currentTile.buildingType === BuildingType.None) {
-      // Check Unlock Condition
+      // Checar se a construção está desbloqueada por população
       if (stats.population < buildingConfig.unlockPop) {
           addNewsItem({id: Date.now().toString(), text: `Requer ${buildingConfig.unlockPop} habitantes!`, type: 'negative'});
           return;
@@ -462,11 +461,13 @@ function App() {
         addNewsItem({id: Date.now().toString() + Math.random(), text: `Precisa de mais Cookies para ${buildingConfig.name}.`, type: 'negative'});
       }
     }
-  }, [selectedTool, addNewsItem, gameStarted, showCharCreator, player, stats.population]);
+  }, [selectedTool, addNewsItem, gameStarted, viewState, player, stats.population]);
 
   const handleAvatarClick = () => {
-     setShowCharCreator(true);
-     setIsInitialCharSetup(false);
+     if (gameStarted) {
+         setViewState('character');
+         setIsInitialCharSetup(false);
+     }
   };
 
   const handleReachStep = (x: number, y: number) => {
@@ -558,15 +559,16 @@ function App() {
       });
   };
 
-  const handleStart = (enabled: boolean) => {
-    setAiEnabled(enabled);
-    setIsInitialCharSetup(true);
-    setShowCharCreator(true);
+  const handleLandingStart = (enabled: boolean) => {
+      setAiEnabled(enabled);
+      setViewState('character');
+      setIsInitialCharSetup(true);
   };
 
   const handleSaveCharacter = (config: PlayerConfig) => {
     setPlayer(config);
-    setShowCharCreator(false);
+    setViewState('game');
+    
     if (isInitialCharSetup) {
         setGameStarted(true);
         addNewsItem({ id: Date.now().toString(), text: "Gridline OS Online. Bem-vindo, Prefeito " + config.name, type: 'positive' });
@@ -585,14 +587,17 @@ function App() {
   }
   
   const hasCityHall = getBuildingCounts()[BuildingType.CityHall] > 0;
+  // Cor do céu dinâmica baseada no clima
   const skyColor = stats.weather === 'night' ? 'bg-slate-900' : (stats.weather === 'rain' ? 'bg-slate-700' : 'bg-sky-400');
 
   return (
     <div className={`relative w-screen h-screen overflow-hidden selection:bg-transparent selection:text-transparent ${skyColor} transition-colors duration-[2000ms]`}>
+      
+      {/* Mapa 3D sempre renderizado no fundo */}
       <IsoMap 
         grid={grid} 
         onTileClick={handleTileClick} 
-        hoveredTool={selectedTool}
+        hoveredTool={viewState === 'game' ? selectedTool : null}
         population={stats.population}
         weather={stats.weather}
         player={player}
@@ -600,11 +605,13 @@ function App() {
         onReachStep={handleReachStep}
       />
       
-      {!gameStarted && !showCharCreator && (
-        <StartScreen onStart={handleStart} />
+      {/* Overlay: Página Inicial */}
+      {viewState === 'landing' && (
+        <LandingPage onStart={handleLandingStart} />
       )}
 
-      {showCharCreator && (
+      {/* Overlay: Criador de Personagem */}
+      {viewState === 'character' && (
           <CharacterCreator 
             initialConfig={player}
             onSave={handleSaveCharacter}
@@ -612,7 +619,8 @@ function App() {
           />
       )}
 
-      {gameStarted && !showCharCreator && (
+      {/* Overlay: Interface do Jogo */}
+      {viewState === 'game' && (
         <UIOverlay
           stats={stats}
           selectedTool={selectedTool}
@@ -629,7 +637,8 @@ function App() {
         />
       )}
 
-      {showID && (
+      {/* Modais */}
+      {showID && viewState === 'game' && (
           <DigitalID 
             stats={stats}
             upgrades={upgrades}
@@ -639,7 +648,7 @@ function App() {
           />
       )}
 
-      {showMarket && (
+      {showMarket && viewState === 'game' && (
           <StockMarket
             stats={stats}
             stocks={stocks}
@@ -649,17 +658,17 @@ function App() {
           />
       )}
       
-      {showPolicies && (
+      {showPolicies && viewState === 'game' && (
           <CityPolicies 
             policies={POLICIES}
             activePolicies={stats.activePolicies}
             onTogglePolicy={handleTogglePolicy}
             onClose={() => setShowPolicies(false)}
-            cookiesPerTick={0} // Not used for now, just visual
+            cookiesPerTick={0} 
           />
       )}
 
-      {inspectedBuilding && (
+      {inspectedBuilding && viewState === 'game' && (
           <BuildingInspector 
              type={inspectedBuilding}
              stats={stats}

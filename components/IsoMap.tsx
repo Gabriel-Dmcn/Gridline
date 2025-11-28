@@ -11,46 +11,6 @@ import { MathUtils } from 'three';
 import { Grid, BuildingType, WeatherType, PlayerConfig } from '../types';
 import { GRID_SIZE, BUILDINGS } from '../constants';
 
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      mesh: any;
-      group: any;
-      meshStandardMaterial: any;
-      meshBasicMaterial: any;
-      boxGeometry: any;
-      cylinderGeometry: any;
-      coneGeometry: any;
-      sphereGeometry: any;
-      planeGeometry: any;
-      ringGeometry: any;
-      instancedMesh: any;
-      ambientLight: any;
-      directionalLight: any;
-    }
-  }
-}
-
-declare module 'react' {
-  namespace JSX {
-    interface IntrinsicElements {
-      mesh: any;
-      group: any;
-      meshStandardMaterial: any;
-      meshBasicMaterial: any;
-      boxGeometry: any;
-      cylinderGeometry: any;
-      coneGeometry: any;
-      sphereGeometry: any;
-      planeGeometry: any;
-      ringGeometry: any;
-      instancedMesh: any;
-      ambientLight: any;
-      directionalLight: any;
-    }
-  }
-}
-
 // --- Constants & Helpers ---
 const WORLD_OFFSET = GRID_SIZE / 2 - 0.5;
 const gridToWorld = (x: number, y: number) => [x - WORLD_OFFSET, 0, y - WORLD_OFFSET] as [number, number, number];
