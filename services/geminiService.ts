@@ -1,3 +1,4 @@
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -38,7 +39,12 @@ const goalSchema = {
         BuildingType.Road,
         BuildingType.WindTurbine,
         BuildingType.DataCenter,
-        BuildingType.BeachResort
+        BuildingType.BeachResort,
+        BuildingType.Metro,
+        BuildingType.School,
+        BuildingType.CityHall,
+        BuildingType.Hospital,
+        BuildingType.SolarFarm
       ],
       description: "Necessário se targetType for building_count.",
     },
@@ -72,6 +78,7 @@ export const generateCityGoal = async (stats: CityStats, grid: Grid): Promise<AI
   const prompt = `Você é o Sistema Operacional da Cidade Inteligente "Gridline".
   A cidade funciona com uma economia baseada em "Cookies" (C$).
   Gere uma missão/meta para o jogador melhorar a infraestrutura, felicidade ou tecnologia.
+  Considere os novos prédios (Metrô, Escola, Prefeitura, Hospital, Solar) se fizer sentido.
   A resposta DEVE ser em Português (PT-BR).
   Seja encorajador e use termos como "Smart Grid", "Big Data", "Sustentabilidade", "Cookies".
   Retorne JSON.`;

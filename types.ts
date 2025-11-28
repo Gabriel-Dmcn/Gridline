@@ -14,6 +14,12 @@ export enum BuildingType {
   BeachResort = 'BeachResort',
   DataCenter = 'DataCenter',
   WindTurbine = 'WindTurbine',
+  // Novas Adições
+  Metro = 'Metro',
+  School = 'School',
+  CityHall = 'CityHall',
+  Hospital = 'Hospital',
+  SolarFarm = 'SolarFarm',
 }
 
 export interface BuildingConfig {
@@ -22,8 +28,13 @@ export interface BuildingConfig {
   name: string;
   description: string;
   color: string; // Cor principal para material 3D
+  emoji: string; // Icone UI
   popGen: number; // Geração de população por tick
   cookieGen: number; // Geração de Cookies por tick
+  satisfactionBonus?: {
+    type: 'transport' | 'environment' | 'education' | 'safety' | 'leisure';
+    amount: number;
+  };
 }
 
 export interface Upgrade {
@@ -58,12 +69,22 @@ export type Grid = TileData[][];
 
 export type WeatherType = 'sunny' | 'rain' | 'night';
 
+export interface SatisfactionStats {
+  total: number;
+  transport: number;
+  environment: number;
+  safety: number;
+  education: number;
+  leisure: number;
+}
+
 export interface CityStats {
   cookies: number; 
   lifetimeCookies: number; // Total acumulado para o ID Digital
   population: number;
   day: number;
   weather: WeatherType;
+  satisfaction: SatisfactionStats;
 }
 
 export interface AIGoal {
@@ -82,10 +103,14 @@ export interface NewsItem {
 }
 
 export type HatType = 'none' | 'cap' | 'tophat' | 'helmet';
+export type FaceType = 'happy' | 'cool' | 'surprised';
 
 export interface PlayerConfig {
   name: string;
-  color: string;
+  color: string; // Shirt Color
+  pantsColor: string;
+  shoeColor: string;
+  face: FaceType;
   hat: HatType;
   x: number;
   y: number;

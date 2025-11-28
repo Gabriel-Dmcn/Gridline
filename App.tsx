@@ -12,6 +12,7 @@ import StartScreen from './components/StartScreen';
 import DigitalID from './components/DigitalID';
 import StockMarket from './components/StockMarket';
 import CharacterCreator from './components/CharacterCreator';
+import BuildingInspector from './components/BuildingInspector';
 import { generateCityGoal, generateNewsEvent } from './services/geminiService';
 
 const createInitialGrid = (): Grid => {
@@ -73,6 +74,7 @@ function App() {
   const [aiEnabled, setAiEnabled] = useState(true);
   const [showID, setShowID] = useState(false);
   const [showMarket, setShowMarket] = useState(false);
+  const [inspectedBuilding, setInspectedBuilding] = useState<BuildingType | null>(null);
 
   const [grid, setGrid] = useState<Grid>(createInitialGrid);
   const [stats, setStats] = useState<CityStats>({ 
@@ -80,7 +82,15 @@ function App() {
     lifetimeCookies: INITIAL_COOKIES,
     population: 0, 
     day: 1,
-    weather: 'sunny' 
+    weather: 'sunny',
+    satisfaction: {
+        total: 50,
+        transport: 50,
+        environment: 50,
+        safety: 50,
+        education: 50,
+        leisure: 50
+    }
   });
   
   // Player Avatar State
@@ -90,7 +100,10 @@ function App() {
       hat: 'cap',
       x: Math.floor(GRID_SIZE/2),
       y: Math.floor(GRID_SIZE/2),
-      path: []
+      path: [],
+      pantsColor: '#1e293b',
+      shoeColor: '#000000',
+      face: 'happy'
   });
 
   // selectedTool can be null (Cursor/Pointer mode)
@@ -140,16 +153,14 @@ function App() {
 
   useEffect(() => {
     if (!gameStarted) return;
-    // Initial news only after game fully starts (after char creator)
     if (!showCharCreator) {
-        // Goal fetching is handled in game loop or separate effect, but let's ensure it starts
+        // Goal fetching init
     }
   }, [gameStarted, showCharCreator]);
 
   // --- Stock Market Simulation Loop ---
   useEffect(() => {
       if (!gameStarted) return;
-
       const marketInterval = setInterval(() => {
           setStocks(currentStocks => {
               return currentStocks.map(stock => {
@@ -161,9 +172,44 @@ function App() {
               });
           });
       }, 5000);
-
       return () => clearInterval(marketInterval);
   }, [gameStarted]);
+
+  // --- Satisfaction Calculation Helper ---
+  const calculateSatisfaction = (counts: Record<string, number>): {total: number, breakdown: any} => {
+    const resCount = counts[BuildingType.Residential] || 0;
+    const indCount = counts[BuildingType.Industrial] || 0;
+    
+    // Transport: Roads/Metro per person logic (simplified)
+    const roads = counts[BuildingType.Road] || 0;
+    const metro = counts[BuildingType.Metro] || 0;
+    // Base 40, + up to 60 based on coverage
+    let transport = 40 + Math.min(60, ((roads * 1 + metro * 10) / (resCount || 1)) * 20);
+
+    // Environment: Green energy vs Industry
+    const green = (counts[BuildingType.Park] || 0) + (counts[BuildingType.SolarFarm] || 0) + (counts[BuildingType.WindTurbine] || 0);
+    let environment = 50 + (green * 5) - (indCount * 8);
+    environment = Math.max(0, Math.min(100, environment));
+
+    // Safety: Hospitals/CityHall
+    const safe = (counts[BuildingType.Hospital] || 0) + (counts[BuildingType.CityHall] || 0);
+    let safety = 40 + Math.min(60, safe * 15);
+
+    // Education: Schools
+    const schools = counts[BuildingType.School] || 0;
+    let education = 30 + Math.min(70, schools * 20);
+
+    // Leisure
+    const leisureBuildings = (counts[BuildingType.BeachResort] || 0) + (counts[BuildingType.Commercial] || 0);
+    let leisure = 40 + Math.min(60, leisureBuildings * 10);
+
+    const total = Math.floor((transport + environment + safety + education + leisure) / 5);
+
+    return {
+        total,
+        breakdown: { transport, environment, safety, education, leisure }
+    };
+  };
 
   // --- Game Loop ---
   useEffect(() => {
@@ -180,6 +226,7 @@ function App() {
       upgradesRef.current.forEach(u => {
         if(u.purchased) {
            if(u.targetType === 'Global') {
+               // Global upgrade logic could go here
            } else {
               multipliers[u.targetType] *= u.multiplier;
            }
@@ -211,13 +258,17 @@ function App() {
         else if (prev.day % 20 === 15) nextWeather = 'night';
         else if (prev.day % 20 === 19) nextWeather = 'sunny';
 
+        const satData = calculateSatisfaction(buildingCounts);
+
         const newStats = {
           cookies: prev.cookies + dailyCookies,
           lifetimeCookies: prev.lifetimeCookies + dailyCookies,
           population: newPop,
           day: prev.day + 1,
-          weather: nextWeather
+          weather: nextWeather,
+          satisfaction: satData.breakdown
         };
+        newStats.satisfaction.total = satData.total;
         
         const goal = goalRef.current;
         if (aiEnabledRef.current && goal && !goal.completed) {
@@ -252,14 +303,20 @@ function App() {
     const currentStats = statsRef.current;
     const tool = selectedTool; 
     
-    // Mode 1: Movement (Cursor Mode)
+    // Mode 1: Cursor Mode (Move or Inspect)
     if (tool === null) {
-        // Calculate Path
+        const clickedType = currentGrid[y][x].buildingType;
+        
+        // If clicking a building, inspect it
+        if (clickedType !== BuildingType.None && clickedType !== BuildingType.Road) {
+             setInspectedBuilding(clickedType);
+             return;
+        }
+
+        // If clicking ground/road, move there
         const path = findPath({x: player.x, y: player.y}, {x, y}, currentGrid);
         if (path.length > 0) {
             setPlayer(prev => ({ ...prev, path }));
-        } else {
-            // Can't move there logic (maybe shake cursor?)
         }
         return;
     }
@@ -311,7 +368,6 @@ function App() {
   const handleReachStep = (x: number, y: number) => {
       setPlayer(prev => {
           const newPath = [...prev.path];
-          // Remove the first element (the step we just reached)
           if(newPath.length > 0 && newPath[0].x === x && newPath[0].y === y) {
               newPath.shift();
           }
@@ -325,11 +381,7 @@ function App() {
   };
 
   const handleSelectTool = (type: BuildingType | null) => {
-    if (selectedTool === type) {
-      setSelectedTool(null);
-    } else {
-      setSelectedTool(type);
-    }
+    setSelectedTool(type);
   };
 
   const handleClaimReward = () => {
@@ -477,6 +529,16 @@ function App() {
             onBuy={handleBuyStock}
             onSell={handleSellStock}
             onClose={() => setShowMarket(false)}
+          />
+      )}
+      
+      {inspectedBuilding && (
+          <BuildingInspector 
+             type={inspectedBuilding}
+             stats={stats}
+             availableUpgrades={upgrades.filter(u => u.targetType === inspectedBuilding)}
+             onUpgrade={handlePurchaseUpgrade}
+             onClose={() => setInspectedBuilding(null)}
           />
       )}
     </div>

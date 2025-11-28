@@ -9,8 +9,8 @@ import { BuildingConfig, BuildingType, Upgrade, Stock } from './types';
 export const GRID_SIZE = 15;
 
 // Configurações do Jogo
-export const TICK_RATE_MS = 120000; // 2 minutos por tick (120.000 ms)
-export const INITIAL_COOKIES = 750; // Cookies Iniciais (C$)
+export const TICK_RATE_MS = 120000; // 2 minutos por tick
+export const INITIAL_COOKIES = 1500;
 
 export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
   [BuildingType.None]: {
@@ -19,6 +19,7 @@ export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
     name: 'Demolir',
     description: 'Limpar terreno',
     color: '#ef4444', 
+    emoji: '❌',
     popGen: 0,
     cookieGen: 0,
   },
@@ -28,8 +29,10 @@ export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
     name: 'Estrada',
     description: 'Conecta áreas',
     color: '#374151',
+    emoji: '🛣️',
     popGen: 0,
     cookieGen: 0,
+    satisfactionBonus: { type: 'transport', amount: 2 }
   },
   [BuildingType.Residential]: {
     type: BuildingType.Residential,
@@ -37,6 +40,7 @@ export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
     name: 'Residência',
     description: '+5 Habitantes',
     color: '#f87171', 
+    emoji: '🏠',
     popGen: 5,
     cookieGen: 0,
   },
@@ -46,6 +50,7 @@ export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
     name: 'Mercado',
     description: '+15 Cookies',
     color: '#60a5fa', 
+    emoji: '🏪',
     popGen: 0,
     cookieGen: 15,
   },
@@ -55,6 +60,7 @@ export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
     name: 'Fábrica Tech',
     description: '+40 Cookies',
     color: '#facc15', 
+    emoji: '🏭',
     popGen: 0,
     cookieGen: 40,
   },
@@ -64,8 +70,10 @@ export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
     name: 'Praça',
     description: 'Qualidade de vida',
     color: '#4ade80', 
+    emoji: '🌳',
     popGen: 2,
     cookieGen: 0,
+    satisfactionBonus: { type: 'environment', amount: 10 }
   },
   [BuildingType.WindTurbine]: {
     type: BuildingType.WindTurbine,
@@ -73,8 +81,10 @@ export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
     name: 'Eólica',
     description: '+10 Cookies (Sustentável)',
     color: '#a3e635',
+    emoji: '💨',
     popGen: 0,
     cookieGen: 10,
+    satisfactionBonus: { type: 'environment', amount: 5 }
   },
   [BuildingType.DataCenter]: {
     type: BuildingType.DataCenter,
@@ -82,6 +92,7 @@ export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
     name: 'Data Center',
     description: '+80 Cookies',
     color: '#6366f1',
+    emoji: '💾',
     popGen: 0,
     cookieGen: 80,
   },
@@ -91,8 +102,65 @@ export const BUILDINGS: Record<BuildingType, BuildingConfig> = {
     name: 'Resort',
     description: '+150 Cookies',
     color: '#f472b6',
+    emoji: '🏖️',
     popGen: 10,
     cookieGen: 150,
+    satisfactionBonus: { type: 'leisure', amount: 15 }
+  },
+  [BuildingType.Metro]: {
+    type: BuildingType.Metro,
+    cost: 400,
+    name: 'Metrô',
+    description: 'Transporte rápido (+20 Pop)',
+    color: '#dc2626',
+    emoji: '🚇',
+    popGen: 20,
+    cookieGen: 5,
+    satisfactionBonus: { type: 'transport', amount: 10 }
+  },
+  [BuildingType.School]: {
+    type: BuildingType.School,
+    cost: 600,
+    name: 'Escola',
+    description: 'Educação Tech (+5 Pop, +10 Cookies)',
+    color: '#fb923c',
+    emoji: '🏫',
+    popGen: 5,
+    cookieGen: 10,
+    satisfactionBonus: { type: 'education', amount: 20 }
+  },
+  [BuildingType.Hospital]: {
+    type: BuildingType.Hospital,
+    cost: 800,
+    name: 'Hospital',
+    description: 'Saúde (+30 Pop)',
+    color: '#ffffff',
+    emoji: '🏥',
+    popGen: 30,
+    cookieGen: 0,
+    satisfactionBonus: { type: 'safety', amount: 20 }
+  },
+  [BuildingType.CityHall]: {
+    type: BuildingType.CityHall,
+    cost: 2000,
+    name: 'Prefeitura',
+    description: 'Centro Adm (+100 Cookies)',
+    color: '#e2e8f0',
+    emoji: '🏛️',
+    popGen: 5,
+    cookieGen: 100,
+    satisfactionBonus: { type: 'safety', amount: 10 }
+  },
+  [BuildingType.SolarFarm]: {
+    type: BuildingType.SolarFarm,
+    cost: 350,
+    name: 'Solar',
+    description: '+25 Cookies (Sustentável)',
+    color: '#1e3a8a',
+    emoji: '☀️',
+    popGen: 0,
+    cookieGen: 25,
+    satisfactionBonus: { type: 'environment', amount: 8 }
   },
 };
 
@@ -103,7 +171,7 @@ export const INITIAL_UPGRADES: Upgrade[] = [
     description: 'Residências geram renda passiva via home office.',
     cost: 500,
     targetType: BuildingType.Residential,
-    multiplier: 1, // Não multiplica, adiciona lógica especial ou apenas flavor, vamos usar pra aumentar pop speed ou algo
+    multiplier: 1, 
     purchased: false,
   },
   {
@@ -140,6 +208,24 @@ export const INITIAL_UPGRADES: Upgrade[] = [
     cost: 800,
     targetType: BuildingType.WindTurbine,
     multiplier: 1.5,
+    purchased: false,
+  },
+  {
+    id: 'subway_expansion',
+    name: 'Trens Magnéticos',
+    description: 'Metrôs suportam o dobro de população.',
+    cost: 1500,
+    targetType: BuildingType.Metro,
+    multiplier: 2.0,
+    purchased: false,
+  },
+  {
+    id: 'edtech',
+    name: 'Plataforma EdTech',
+    description: 'Escolas geram renda além de educação.',
+    cost: 1000,
+    targetType: BuildingType.School,
+    multiplier: 2.0,
     purchased: false,
   }
 ];

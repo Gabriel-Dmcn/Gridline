@@ -21,15 +21,20 @@ interface UIOverlayProps {
 }
 
 const tools = [
-  BuildingType.None,
   BuildingType.Road,
   BuildingType.Residential,
   BuildingType.Commercial,
   BuildingType.Industrial,
   BuildingType.Park,
   BuildingType.WindTurbine,
+  BuildingType.SolarFarm,
+  BuildingType.Metro,
+  BuildingType.School,
+  BuildingType.Hospital,
   BuildingType.DataCenter,
-  BuildingType.BeachResort
+  BuildingType.BeachResort,
+  BuildingType.CityHall,
+  BuildingType.None,
 ];
 
 const ToolButton: React.FC<{
@@ -49,15 +54,14 @@ const ToolButton: React.FC<{
       className={`
         relative flex flex-col items-center justify-center border-2 transition-all flex-shrink-0 group
         w-16 h-16 md:w-20 md:h-20
-        ${isSelected ? 'border-yellow-400 bg-blue-900 z-10 scale-105' : 'border-gray-600 bg-gray-900 hover:bg-gray-800'}
+        ${isSelected ? 'border-yellow-400 bg-blue-900 z-10 scale-105 shadow-[0_0_15px_rgba(250,204,21,0.5)]' : 'border-gray-600 bg-gray-900 hover:bg-gray-800'}
         ${!isBulldoze && !canAfford ? 'opacity-60 grayscale cursor-not-allowed' : 'cursor-pointer'}
         rounded-xl
       `}
       title={config.description}
     >
-      <div className={`w-8 h-8 rounded-md mb-1 border-2 border-black/50 shadow-inner flex items-center justify-center overflow-hidden`} style={{ backgroundColor: isBulldoze ? 'transparent' : config.color }}>
-        {isBulldoze && <span className="text-red-500 font-bold text-xl">X</span>}
-        {type === BuildingType.Road && <div className="w-full h-2 bg-gray-800 transform -rotate-45"></div>}
+      <div className={`text-3xl md:text-4xl mb-1 filter drop-shadow-md transition-transform group-hover:scale-110`}>
+        {config.emoji}
       </div>
       <span className="text-xs font-vt323 text-white uppercase tracking-wider leading-none text-center truncate w-full px-1">{config.name}</span>
       {config.cost > 0 && (
@@ -77,13 +81,13 @@ const CursorButton: React.FC<{
       className={`
         relative flex flex-col items-center justify-center border-2 transition-all flex-shrink-0 group
         w-16 h-16 md:w-20 md:h-20
-        ${isSelected ? 'border-cyan-400 bg-blue-900 z-10 scale-105' : 'border-gray-600 bg-gray-900 hover:bg-gray-800'}
-        rounded-xl cursor-pointer
+        ${isSelected ? 'border-cyan-400 bg-blue-900 z-10 scale-105 shadow-[0_0_15px_rgba(34,211,238,0.5)]' : 'border-gray-600 bg-gray-900 hover:bg-gray-800'}
+        rounded-xl cursor-pointer mr-2
       `}
-      title="Selecionar / Inspecionar (Nenhum item selecionado)"
+      title="Selecionar / Mover (Nenhum item selecionado)"
     >
-      <div className={`w-8 h-8 rounded-md mb-1 flex items-center justify-center text-white`}>
-        <span className="text-2xl">👆</span>
+      <div className={`text-3xl md:text-4xl mb-1 filter drop-shadow-md`}>
+        👆
       </div>
       <span className="text-xs font-vt323 text-white uppercase tracking-wider leading-none text-center w-full px-1">CURSOR</span>
     </button>
@@ -110,6 +114,8 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
     }
   }, [newsFeed]);
 
+  const satisfactionColor = stats.satisfaction.total > 70 ? 'text-green-400' : stats.satisfaction.total > 40 ? 'text-yellow-400' : 'text-red-400';
+
   return (
     <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 font-vt323 text-lg z-10">
       
@@ -131,6 +137,11 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
             <div className="flex flex-col">
                 <span className="text-slate-400 uppercase text-sm tracking-wider">Habitantes</span>
                 <span className="text-2xl text-cyan-300">{stats.population.toLocaleString()}</span>
+            </div>
+            <div className="w-px h-8 bg-slate-700"></div>
+            <div className="flex flex-col">
+                <span className="text-slate-400 uppercase text-sm tracking-wider">Satisfação</span>
+                <span className={`text-2xl ${satisfactionColor}`}>{stats.satisfaction.total}%</span>
             </div>
             <div className="flex-grow"></div>
             <div className="flex flex-col items-end">
@@ -213,12 +224,14 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
         
         {/* Dock / Toolbar */}
         <div className="bg-gray-800 p-2 rounded-t-xl md:rounded-xl border-t-2 md:border-2 border-gray-600 shadow-2xl w-full md:w-auto overflow-hidden">
-          <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 justify-start md:justify-center w-full max-w-[90vw] md:max-w-none">
-            {/* Cursor Button (Deselect) */}
-            <CursorButton 
-              isSelected={selectedTool === null} 
-              onClick={() => onSelectTool(null)} 
-            />
+          <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 justify-start w-full max-w-[90vw] md:max-w-none scrollbar-thin scrollbar-thumb-gray-600">
+            {/* Cursor Button (Deselect) - Always visible and pinned */}
+            <div className="sticky left-0 z-20 bg-gray-800 pr-2 border-r border-gray-600">
+                <CursorButton 
+                isSelected={selectedTool === null} 
+                onClick={() => onSelectTool(null)} 
+                />
+            </div>
             
             {tools.map((type) => (
               <ToolButton
@@ -251,10 +264,6 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
             ))}
           </div>
         </div>
-      </div>
-      
-      <div className="absolute bottom-1 right-2 text-white/20 text-xs">
-        Gridline OS v2.0
       </div>
     </div>
   );
