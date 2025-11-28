@@ -1,0 +1,315 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+*/
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Grid, TileData, BuildingType, CityStats, AIGoal, NewsItem, WeatherType, Upgrade } from './types';
+import { GRID_SIZE, BUILDINGS, TICK_RATE_MS, INITIAL_COOKIES, INITIAL_UPGRADES } from './constants';
+import IsoMap from './components/IsoMap';
+import UIOverlay from './components/UIOverlay';
+import StartScreen from './components/StartScreen';
+import DigitalID from './components/DigitalID';
+import { generateCityGoal, generateNewsEvent } from './services/geminiService';
+
+const createInitialGrid = (): Grid => {
+  const grid: Grid = [];
+  const center = GRID_SIZE / 2;
+
+  for (let y = 0; y < GRID_SIZE; y++) {
+    const row: TileData[] = [];
+    for (let x = 0; x < GRID_SIZE; x++) {
+      const dist = Math.sqrt((x-center)*(x-center) + (y-center)*(y-center));
+      row.push({ x, y, buildingType: BuildingType.None });
+    }
+    grid.push(row);
+  }
+  return grid;
+};
+
+function App() {
+  const [gameStarted, setGameStarted] = useState(false);
+  const [aiEnabled, setAiEnabled] = useState(true);
+  const [showID, setShowID] = useState(false);
+
+  const [grid, setGrid] = useState<Grid>(createInitialGrid);
+  const [stats, setStats] = useState<CityStats>({ 
+    cookies: INITIAL_COOKIES, 
+    lifetimeCookies: INITIAL_COOKIES,
+    population: 0, 
+    day: 1,
+    weather: 'sunny' 
+  });
+  // selectedTool can be null (Cursor/Pointer mode)
+  const [selectedTool, setSelectedTool] = useState<BuildingType | null>(null);
+  const [upgrades, setUpgrades] = useState<Upgrade[]>(INITIAL_UPGRADES);
+  
+  const [currentGoal, setCurrentGoal] = useState<AIGoal | null>(null);
+  const [isGeneratingGoal, setIsGeneratingGoal] = useState(false);
+  const [newsFeed, setNewsFeed] = useState<NewsItem[]>([]);
+  
+  const gridRef = useRef(grid);
+  const statsRef = useRef(stats);
+  const goalRef = useRef(currentGoal);
+  const aiEnabledRef = useRef(aiEnabled);
+  const upgradesRef = useRef(upgrades);
+
+  useEffect(() => { gridRef.current = grid; }, [grid]);
+  useEffect(() => { statsRef.current = stats; }, [stats]);
+  useEffect(() => { goalRef.current = currentGoal; }, [currentGoal]);
+  useEffect(() => { aiEnabledRef.current = aiEnabled; }, [aiEnabled]);
+  useEffect(() => { upgradesRef.current = upgrades; }, [upgrades]);
+
+  const addNewsItem = useCallback((item: NewsItem) => {
+    setNewsFeed(prev => [...prev.slice(-12), item]); 
+  }, []);
+
+  const fetchNewGoal = useCallback(async () => {
+    if (isGeneratingGoal || !aiEnabledRef.current) return;
+    setIsGeneratingGoal(true);
+    await new Promise(r => setTimeout(r, 500));
+    
+    const newGoal = await generateCityGoal(statsRef.current, gridRef.current);
+    if (newGoal) {
+      setCurrentGoal(newGoal);
+    } else {
+      if(aiEnabledRef.current) setTimeout(fetchNewGoal, 5000);
+    }
+    setIsGeneratingGoal(false);
+  }, [isGeneratingGoal]); 
+
+  const fetchNews = useCallback(async () => {
+    if (!aiEnabledRef.current || Math.random() > 0.15) return; 
+    const news = await generateNewsEvent(statsRef.current, null);
+    if (news) addNewsItem(news);
+  }, [addNewsItem]);
+
+  useEffect(() => {
+    if (!gameStarted) return;
+    addNewsItem({ id: Date.now().toString(), text: "Gridline OS Online. Bem-vindo, Administrador.", type: 'positive' });
+    if (aiEnabled) fetchNewGoal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameStarted]);
+
+  // --- Game Loop ---
+  useEffect(() => {
+    if (!gameStarted) return;
+
+    const intervalId = setInterval(() => {
+      let dailyCookies = 0;
+      let dailyPopGrowth = 0;
+      let buildingCounts: Record<string, number> = {};
+
+      // Calcular multiplicadores de upgrade
+      const multipliers: Record<string, number> = {};
+      Object.values(BuildingType).forEach(t => multipliers[t] = 1);
+      
+      upgradesRef.current.forEach(u => {
+        if(u.purchased) {
+           if(u.targetType === 'Global') {
+              // Simplificação: Global aumenta tudo um pouco, mas aqui vamos ignorar para focar em especificos
+           } else {
+              multipliers[u.targetType] *= u.multiplier;
+           }
+        }
+      });
+
+      gridRef.current.flat().forEach(tile => {
+        if (tile.buildingType !== BuildingType.None) {
+          const config = BUILDINGS[tile.buildingType];
+          
+          const multiplier = multipliers[tile.buildingType] || 1;
+          
+          dailyCookies += config.cookieGen * multiplier;
+          dailyPopGrowth += config.popGen * multiplier; // População também escala com upgrades de eficiência
+          buildingCounts[tile.buildingType] = (buildingCounts[tile.buildingType] || 0) + 1;
+        }
+      });
+
+      // Arredondar para evitar floats feios na UI (C$)
+      dailyCookies = Math.floor(dailyCookies);
+
+      const resCount = buildingCounts[BuildingType.Residential] || 0;
+      const maxPop = resCount * 50; 
+
+      setStats(prev => {
+        let newPop = prev.population + Math.floor(dailyPopGrowth);
+        if (newPop > maxPop) newPop = maxPop; 
+        if (resCount === 0 && prev.population > 0) newPop = Math.max(0, prev.population - 5); 
+
+        // Weather Cycle: Simple progression Sunny -> Rain -> Sunny -> Night -> Sunny
+        let nextWeather: WeatherType = prev.weather;
+        if (prev.day % 10 === 0) nextWeather = 'rain';
+        else if (prev.day % 10 === 2) nextWeather = 'sunny';
+        else if (prev.day % 20 === 15) nextWeather = 'night';
+        else if (prev.day % 20 === 19) nextWeather = 'sunny';
+
+        const newStats = {
+          cookies: prev.cookies + dailyCookies,
+          lifetimeCookies: prev.lifetimeCookies + dailyCookies,
+          population: newPop,
+          day: prev.day + 1,
+          weather: nextWeather
+        };
+        
+        const goal = goalRef.current;
+        if (aiEnabledRef.current && goal && !goal.completed) {
+          let isMet = false;
+          if (goal.targetType === 'cookies' && newStats.cookies >= goal.targetValue) isMet = true;
+          if (goal.targetType === 'population' && newStats.population >= goal.targetValue) isMet = true;
+          if (goal.targetType === 'building_count' && goal.buildingType) {
+            if ((buildingCounts[goal.buildingType] || 0) >= goal.targetValue) isMet = true;
+          }
+
+          if (isMet) {
+            setCurrentGoal({ ...goal, completed: true });
+          }
+        }
+
+        return newStats;
+      });
+
+      fetchNews();
+
+    }, TICK_RATE_MS);
+
+    return () => clearInterval(intervalId);
+  }, [fetchNews, gameStarted]);
+
+  const handleTileClick = useCallback((x: number, y: number) => {
+    if (!gameStarted) return; 
+
+    const currentGrid = gridRef.current;
+    const currentStats = statsRef.current;
+    const tool = selectedTool; 
+    
+    // If no tool selected (Cursor mode), do nothing (safe mode)
+    if (tool === null) return;
+
+    if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return;
+
+    const currentTile = currentGrid[y][x];
+    const buildingConfig = BUILDINGS[tool];
+
+    if (tool === BuildingType.None) {
+      if (currentTile.buildingType !== BuildingType.None) {
+        const demolishCost = 5;
+        if (currentStats.cookies >= demolishCost) {
+            const newGrid = currentGrid.map(row => [...row]);
+            newGrid[y][x] = { ...currentTile, buildingType: BuildingType.None };
+            setGrid(newGrid);
+            setStats(prev => ({ ...prev, cookies: prev.cookies - demolishCost }));
+        } else {
+            addNewsItem({id: Date.now().toString(), text: "Cookies insuficientes para demolição.", type: 'negative'});
+        }
+      }
+      return;
+    }
+
+    if (currentTile.buildingType === BuildingType.None) {
+      if (currentStats.cookies >= buildingConfig.cost) {
+        setStats(prev => ({ ...prev, cookies: prev.cookies - buildingConfig.cost }));
+        const newGrid = currentGrid.map(row => [...row]);
+        newGrid[y][x] = { ...currentTile, buildingType: tool };
+        setGrid(newGrid);
+      } else {
+        addNewsItem({id: Date.now().toString() + Math.random(), text: `Precisa de mais Cookies para ${buildingConfig.name}.`, type: 'negative'});
+      }
+    }
+  }, [selectedTool, addNewsItem, gameStarted]);
+
+  const handleSelectTool = (type: BuildingType | null) => {
+    // If clicking the already selected tool, deselect it (toggle to cursor)
+    if (selectedTool === type) {
+      setSelectedTool(null);
+    } else {
+      setSelectedTool(type);
+    }
+  };
+
+  const handleClaimReward = () => {
+    if (currentGoal && currentGoal.completed) {
+      setStats(prev => ({ 
+        ...prev, 
+        cookies: prev.cookies + currentGoal.reward,
+        lifetimeCookies: prev.lifetimeCookies + currentGoal.reward
+      }));
+      addNewsItem({id: Date.now().toString(), text: `Missão Completa! +${currentGoal.reward} Cookies.`, type: 'positive'});
+      setCurrentGoal(null);
+      fetchNewGoal();
+    }
+  };
+
+  const handlePurchaseUpgrade = (id: string) => {
+    const upgradeIndex = upgrades.findIndex(u => u.id === id);
+    if (upgradeIndex === -1) return;
+    
+    const upgrade = upgrades[upgradeIndex];
+    if (stats.cookies >= upgrade.cost && !upgrade.purchased) {
+        setStats(prev => ({...prev, cookies: prev.cookies - upgrade.cost}));
+        const newUpgrades = [...upgrades];
+        newUpgrades[upgradeIndex] = {...upgrade, purchased: true};
+        setUpgrades(newUpgrades);
+        addNewsItem({id: Date.now().toString(), text: `Upgrade Adquirido: ${upgrade.name}`, type: 'positive'});
+    }
+  };
+
+  const handleStart = (enabled: boolean) => {
+    setAiEnabled(enabled);
+    setGameStarted(true);
+  };
+
+  // Helper to count buildings for UI
+  const getBuildingCounts = () => {
+      const counts: Record<string, number> = {};
+      grid.flat().forEach(tile => {
+         if(tile.buildingType !== BuildingType.None) {
+             counts[tile.buildingType] = (counts[tile.buildingType] || 0) + 1;
+         }
+      });
+      return counts;
+  }
+
+  const skyColor = stats.weather === 'night' ? 'bg-slate-900' : (stats.weather === 'rain' ? 'bg-slate-700' : 'bg-sky-400');
+
+  return (
+    <div className={`relative w-screen h-screen overflow-hidden selection:bg-transparent selection:text-transparent ${skyColor} transition-colors duration-[2000ms]`}>
+      <IsoMap 
+        grid={grid} 
+        onTileClick={handleTileClick} 
+        hoveredTool={selectedTool}
+        population={stats.population}
+        weather={stats.weather}
+      />
+      
+      {!gameStarted && (
+        <StartScreen onStart={handleStart} />
+      )}
+
+      {gameStarted && (
+        <UIOverlay
+          stats={stats}
+          selectedTool={selectedTool}
+          onSelectTool={handleSelectTool}
+          currentGoal={currentGoal}
+          newsFeed={newsFeed}
+          onClaimReward={handleClaimReward}
+          isGeneratingGoal={isGeneratingGoal}
+          aiEnabled={aiEnabled}
+          onOpenID={() => setShowID(true)}
+        />
+      )}
+
+      {showID && (
+          <DigitalID 
+            stats={stats}
+            upgrades={upgrades}
+            onPurchaseUpgrade={handlePurchaseUpgrade}
+            onClose={() => setShowID(false)}
+            buildingCounts={getBuildingCounts()}
+          />
+      )}
+    </div>
+  );
+}
+
+export default App;
