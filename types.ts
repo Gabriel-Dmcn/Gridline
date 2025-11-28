@@ -31,6 +31,8 @@ export interface BuildingConfig {
   emoji: string; // Icone UI
   popGen: number; // Geração de população por tick
   cookieGen: number; // Geração de Cookies por tick
+  unlockPop: number; // População necessária para desbloquear
+  energyDelta: number; // Consumo (-) ou Produção (+) de energia
   satisfactionBonus?: {
     type: 'transport' | 'environment' | 'education' | 'safety' | 'leisure';
     amount: number;
@@ -45,6 +47,19 @@ export interface Upgrade {
   targetType: BuildingType | 'Global';
   multiplier: number; // Ex: 1.5 aumenta em 50%
   purchased: boolean;
+}
+
+export interface Policy {
+  id: string;
+  name: string;
+  description: string;
+  costPerTick: number;
+  active: boolean;
+  effect: {
+    target: 'satisfaction' | 'cookies' | 'population';
+    value: number; // value to add or multiply
+    type: 'flat' | 'multiplier';
+  };
 }
 
 export interface Stock {
@@ -85,6 +100,12 @@ export interface CityStats {
   day: number;
   weather: WeatherType;
   satisfaction: SatisfactionStats;
+  energy: {
+    produced: number;
+    consumed: number;
+    balance: number;
+  };
+  activePolicies: string[]; // IDs of active policies
 }
 
 export interface AIGoal {

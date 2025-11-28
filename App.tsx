@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Grid, TileData, BuildingType, CityStats, AIGoal, NewsItem, WeatherType, Upgrade, Stock, PlayerConfig } from './types';
-import { GRID_SIZE, BUILDINGS, TICK_RATE_MS, INITIAL_COOKIES, INITIAL_UPGRADES, INITIAL_STOCKS } from './constants';
+import { Grid, TileData, BuildingType, CityStats, AIGoal, NewsItem, WeatherType, Upgrade, Stock, PlayerConfig, Policy } from './types';
+import { GRID_SIZE, BUILDINGS, TICK_RATE_MS, INITIAL_COOKIES, INITIAL_UPGRADES, INITIAL_STOCKS, POLICIES } from './constants';
 import IsoMap from './components/IsoMap';
 import UIOverlay from './components/UIOverlay';
 import StartScreen from './components/StartScreen';
@@ -13,6 +13,7 @@ import DigitalID from './components/DigitalID';
 import StockMarket from './components/StockMarket';
 import CharacterCreator from './components/CharacterCreator';
 import BuildingInspector from './components/BuildingInspector';
+import CityPolicies from './components/CityPolicies';
 import { generateCityGoal, generateNewsEvent } from './services/geminiService';
 
 const createInitialGrid = (): Grid => {
@@ -74,6 +75,7 @@ function App() {
   const [aiEnabled, setAiEnabled] = useState(true);
   const [showID, setShowID] = useState(false);
   const [showMarket, setShowMarket] = useState(false);
+  const [showPolicies, setShowPolicies] = useState(false);
   const [inspectedBuilding, setInspectedBuilding] = useState<BuildingType | null>(null);
 
   const [grid, setGrid] = useState<Grid>(createInitialGrid);
@@ -90,7 +92,13 @@ function App() {
         safety: 50,
         education: 50,
         leisure: 50
-    }
+    },
+    energy: {
+        produced: 0,
+        consumed: 0,
+        balance: 0
+    },
+    activePolicies: []
   });
   
   // Player Avatar State
@@ -106,7 +114,6 @@ function App() {
       face: 'happy'
   });
 
-  // selectedTool can be null (Cursor/Pointer mode)
   const [selectedTool, setSelectedTool] = useState<BuildingType | null>(null);
   const [upgrades, setUpgrades] = useState<Upgrade[]>(INITIAL_UPGRADES);
   const [stocks, setStocks] = useState<Stock[]>(INITIAL_STOCKS);
@@ -126,6 +133,42 @@ function App() {
   useEffect(() => { goalRef.current = currentGoal; }, [currentGoal]);
   useEffect(() => { aiEnabledRef.current = aiEnabled; }, [aiEnabled]);
   useEffect(() => { upgradesRef.current = upgrades; }, [upgrades]);
+
+  // --- Auto Save/Load System ---
+  useEffect(() => {
+    // Load on Mount
+    const savedData = localStorage.getItem('gridline_save');
+    if (savedData) {
+        try {
+            const data = JSON.parse(savedData);
+            if(data.grid) setGrid(data.grid);
+            if(data.stats) setStats(data.stats);
+            if(data.player) setPlayer(data.player);
+            if(data.upgrades) setUpgrades(data.upgrades);
+            if(data.stocks) setStocks(data.stocks);
+            // Don't auto-start to allow main menu
+        } catch(e) {
+            console.error("Save file corrupt", e);
+        }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!gameStarted) return;
+    const saveInterval = setInterval(() => {
+        const dataToSave = {
+            grid: gridRef.current,
+            stats: statsRef.current,
+            player: player,
+            upgrades: upgradesRef.current,
+            stocks: stocks
+        };
+        localStorage.setItem('gridline_save', JSON.stringify(dataToSave));
+        console.log("Auto-saved game");
+    }, 10000); // Save every 10s
+    return () => clearInterval(saveInterval);
+  }, [gameStarted, player, stocks]);
+
 
   const addNewsItem = useCallback((item: NewsItem) => {
     setNewsFeed(prev => [...prev.slice(-12), item]); 
@@ -180,26 +223,20 @@ function App() {
     const resCount = counts[BuildingType.Residential] || 0;
     const indCount = counts[BuildingType.Industrial] || 0;
     
-    // Transport: Roads/Metro per person logic (simplified)
     const roads = counts[BuildingType.Road] || 0;
     const metro = counts[BuildingType.Metro] || 0;
-    // Base 40, + up to 60 based on coverage
     let transport = 40 + Math.min(60, ((roads * 1 + metro * 10) / (resCount || 1)) * 20);
 
-    // Environment: Green energy vs Industry
     const green = (counts[BuildingType.Park] || 0) + (counts[BuildingType.SolarFarm] || 0) + (counts[BuildingType.WindTurbine] || 0);
     let environment = 50 + (green * 5) - (indCount * 8);
     environment = Math.max(0, Math.min(100, environment));
 
-    // Safety: Hospitals/CityHall
     const safe = (counts[BuildingType.Hospital] || 0) + (counts[BuildingType.CityHall] || 0);
     let safety = 40 + Math.min(60, safe * 15);
 
-    // Education: Schools
     const schools = counts[BuildingType.School] || 0;
     let education = 30 + Math.min(70, schools * 20);
 
-    // Leisure
     const leisureBuildings = (counts[BuildingType.BeachResort] || 0) + (counts[BuildingType.Commercial] || 0);
     let leisure = 40 + Math.min(60, leisureBuildings * 10);
 
@@ -218,58 +255,123 @@ function App() {
     const intervalId = setInterval(() => {
       let dailyCookies = 0;
       let dailyPopGrowth = 0;
+      let totalEnergyProduced = 0;
+      let totalEnergyConsumed = 0;
       let buildingCounts: Record<string, number> = {};
 
+      // 1. Calculate Multipliers (Upgrades + Policies)
       const multipliers: Record<string, number> = {};
       Object.values(BuildingType).forEach(t => multipliers[t] = 1);
-      
+      let globalCookieMultiplier = 1;
+
+      // Upgrades
       upgradesRef.current.forEach(u => {
         if(u.purchased) {
            if(u.targetType === 'Global') {
-               // Global upgrade logic could go here
+               globalCookieMultiplier *= u.multiplier;
            } else {
               multipliers[u.targetType] *= u.multiplier;
            }
         }
       });
 
+      // Policies
+      let policyCost = 0;
+      statsRef.current.activePolicies.forEach(policyId => {
+          const policy = POLICIES.find(p => p.id === policyId);
+          if (policy) {
+              policyCost += policy.costPerTick;
+              if (policy.effect.target === 'cookies' && policy.effect.type === 'multiplier') {
+                  globalCookieMultiplier *= policy.effect.value;
+              }
+              // Other effects handled in satisfaction/pop logic later
+          }
+      });
+
+      // 2. Iterate Buildings
       gridRef.current.flat().forEach(tile => {
         if (tile.buildingType !== BuildingType.None) {
           const config = BUILDINGS[tile.buildingType];
           const multiplier = multipliers[tile.buildingType] || 1;
+          
           dailyCookies += config.cookieGen * multiplier;
           dailyPopGrowth += config.popGen * multiplier; 
+          
+          const eDelta = config.energyDelta; // Base energy
+          // Apply Upgrade buffs to energy production (Smart Grid)
+          let eMult = 1;
+          if ((tile.buildingType === BuildingType.WindTurbine || tile.buildingType === BuildingType.SolarFarm) && multipliers[BuildingType.WindTurbine] > 1) {
+              eMult = multipliers[BuildingType.WindTurbine]; // Reuse Smart Grid logic
+          }
+
+          if (eDelta > 0) totalEnergyProduced += eDelta * eMult;
+          else totalEnergyConsumed += Math.abs(eDelta);
+
           buildingCounts[tile.buildingType] = (buildingCounts[tile.buildingType] || 0) + 1;
         }
       });
 
-      dailyCookies = Math.floor(dailyCookies);
+      // 3. Energy Penalty
+      const energyBalance = totalEnergyProduced - totalEnergyConsumed;
+      if (energyBalance < 0) {
+          globalCookieMultiplier *= 0.5; // Blackout penalty
+          if (statsRef.current.energy.balance >= 0) {
+             addNewsItem({id: Date.now().toString(), text: "APAGÃO! Produção reduzida em 50%. Construa mais energia!", type: 'negative'});
+          }
+      }
+
+      dailyCookies = Math.floor(dailyCookies * globalCookieMultiplier) - policyCost;
+
+      // 4. Update Stats
       const resCount = buildingCounts[BuildingType.Residential] || 0;
       const maxPop = resCount * 50; 
 
       setStats(prev => {
         let newPop = prev.population + Math.floor(dailyPopGrowth);
+        
+        // Policy Pop Buff
+        const popPolicy = prev.activePolicies.find(id => id === 'night_life');
+        if (popPolicy) newPop = Math.floor(newPop * 1.1);
+
         if (newPop > maxPop) newPop = maxPop; 
         if (resCount === 0 && prev.population > 0) newPop = Math.max(0, prev.population - 5); 
 
+        // Weather Cycle
         let nextWeather: WeatherType = prev.weather;
         if (prev.day % 10 === 0) nextWeather = 'rain';
         else if (prev.day % 10 === 2) nextWeather = 'sunny';
         else if (prev.day % 20 === 15) nextWeather = 'night';
         else if (prev.day % 20 === 19) nextWeather = 'sunny';
 
+        // Satisfaction
         const satData = calculateSatisfaction(buildingCounts);
+        
+        // Apply Policy Satisfaction Buffs
+        prev.activePolicies.forEach(pid => {
+            const p = POLICIES.find(pol => pol.id === pid);
+            if (p && p.effect.target === 'satisfaction') satData.total += p.effect.value;
+        });
+        satData.total = Math.min(100, satData.total);
 
         const newStats = {
+          ...prev,
           cookies: prev.cookies + dailyCookies,
-          lifetimeCookies: prev.lifetimeCookies + dailyCookies,
+          lifetimeCookies: prev.lifetimeCookies + Math.max(0, dailyCookies),
           population: newPop,
           day: prev.day + 1,
           weather: nextWeather,
-          satisfaction: satData.breakdown
+          satisfaction: {
+              ...satData.breakdown,
+              total: satData.total
+          },
+          energy: {
+              produced: totalEnergyProduced,
+              consumed: totalEnergyConsumed,
+              balance: energyBalance
+          }
         };
-        newStats.satisfaction.total = satData.total;
         
+        // Goal Check
         const goal = goalRef.current;
         if (aiEnabledRef.current && goal && !goal.completed) {
           let isMet = false;
@@ -306,14 +408,10 @@ function App() {
     // Mode 1: Cursor Mode (Move or Inspect)
     if (tool === null) {
         const clickedType = currentGrid[y][x].buildingType;
-        
-        // If clicking a building, inspect it
         if (clickedType !== BuildingType.None && clickedType !== BuildingType.Road) {
              setInspectedBuilding(clickedType);
              return;
         }
-
-        // If clicking ground/road, move there
         const path = findPath({x: player.x, y: player.y}, {x, y}, currentGrid);
         if (path.length > 0) {
             setPlayer(prev => ({ ...prev, path }));
@@ -349,6 +447,12 @@ function App() {
     }
 
     if (currentTile.buildingType === BuildingType.None) {
+      // Check Unlock Condition
+      if (stats.population < buildingConfig.unlockPop) {
+          addNewsItem({id: Date.now().toString(), text: `Requer ${buildingConfig.unlockPop} habitantes!`, type: 'negative'});
+          return;
+      }
+
       if (currentStats.cookies >= buildingConfig.cost) {
         setStats(prev => ({ ...prev, cookies: prev.cookies - buildingConfig.cost }));
         const newGrid = currentGrid.map(row => [...row]);
@@ -358,7 +462,7 @@ function App() {
         addNewsItem({id: Date.now().toString() + Math.random(), text: `Precisa de mais Cookies para ${buildingConfig.name}.`, type: 'negative'});
       }
     }
-  }, [selectedTool, addNewsItem, gameStarted, showCharCreator, player]);
+  }, [selectedTool, addNewsItem, gameStarted, showCharCreator, player, stats.population]);
 
   const handleAvatarClick = () => {
      setShowCharCreator(true);
@@ -444,6 +548,16 @@ function App() {
       }
   };
 
+  const handleTogglePolicy = (policyId: string) => {
+      setStats(prev => {
+          const isActive = prev.activePolicies.includes(policyId);
+          const newPolicies = isActive 
+              ? prev.activePolicies.filter(id => id !== policyId)
+              : [...prev.activePolicies, policyId];
+          return { ...prev, activePolicies: newPolicies };
+      });
+  };
+
   const handleStart = (enabled: boolean) => {
     setAiEnabled(enabled);
     setIsInitialCharSetup(true);
@@ -469,7 +583,8 @@ function App() {
       });
       return counts;
   }
-
+  
+  const hasCityHall = getBuildingCounts()[BuildingType.CityHall] > 0;
   const skyColor = stats.weather === 'night' ? 'bg-slate-900' : (stats.weather === 'rain' ? 'bg-slate-700' : 'bg-sky-400');
 
   return (
@@ -509,6 +624,8 @@ function App() {
           aiEnabled={aiEnabled}
           onOpenID={() => setShowID(true)}
           onOpenMarket={() => setShowMarket(true)}
+          onOpenPolicies={() => setShowPolicies(true)}
+          hasCityHall={hasCityHall}
         />
       )}
 
@@ -532,6 +649,16 @@ function App() {
           />
       )}
       
+      {showPolicies && (
+          <CityPolicies 
+            policies={POLICIES}
+            activePolicies={stats.activePolicies}
+            onTogglePolicy={handleTogglePolicy}
+            onClose={() => setShowPolicies(false)}
+            cookiesPerTick={0} // Not used for now, just visual
+          />
+      )}
+
       {inspectedBuilding && (
           <BuildingInspector 
              type={inspectedBuilding}

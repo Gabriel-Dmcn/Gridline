@@ -18,6 +18,8 @@ interface UIOverlayProps {
   aiEnabled: boolean;
   onOpenID: () => void;
   onOpenMarket: () => void;
+  onOpenPolicies: () => void;
+  hasCityHall: boolean;
 }
 
 const tools = [
@@ -42,30 +44,38 @@ const ToolButton: React.FC<{
   isSelected: boolean;
   onClick: () => void;
   cookies: number;
-}> = ({ type, isSelected, onClick, cookies }) => {
+  population: number;
+}> = ({ type, isSelected, onClick, cookies, population }) => {
   const config = BUILDINGS[type];
   const canAfford = cookies >= config.cost;
   const isBulldoze = type === BuildingType.None;
+  const isLocked = !isBulldoze && config.unlockPop > population;
   
   return (
     <button
-      onClick={onClick}
-      disabled={!isBulldoze && !canAfford}
+      onClick={isLocked ? undefined : onClick}
+      disabled={(!isBulldoze && !canAfford) || isLocked}
       className={`
         relative flex flex-col items-center justify-center border-2 transition-all flex-shrink-0 group
         w-16 h-16 md:w-20 md:h-20
         ${isSelected ? 'border-yellow-400 bg-blue-900 z-10 scale-105 shadow-[0_0_15px_rgba(250,204,21,0.5)]' : 'border-gray-600 bg-gray-900 hover:bg-gray-800'}
-        ${!isBulldoze && !canAfford ? 'opacity-60 grayscale cursor-not-allowed' : 'cursor-pointer'}
+        ${isLocked ? 'opacity-50 grayscale cursor-not-allowed bg-slate-950' : ''}
+        ${!isBulldoze && !canAfford && !isLocked ? 'opacity-60 grayscale cursor-not-allowed' : 'cursor-pointer'}
         rounded-xl
       `}
-      title={config.description}
+      title={isLocked ? `Desbloqueia com ${config.unlockPop} Pop` : config.description}
     >
-      <div className={`text-3xl md:text-4xl mb-1 filter drop-shadow-md transition-transform group-hover:scale-110`}>
-        {config.emoji}
+      <div className={`text-3xl md:text-4xl mb-1 filter drop-shadow-md transition-transform ${!isLocked && 'group-hover:scale-110'}`}>
+        {isLocked ? '🔒' : config.emoji}
       </div>
-      <span className="text-xs font-vt323 text-white uppercase tracking-wider leading-none text-center truncate w-full px-1">{config.name}</span>
-      {config.cost > 0 && (
+      <span className="text-xs font-vt323 text-white uppercase tracking-wider leading-none text-center truncate w-full px-1">
+        {isLocked ? 'BLOQ.' : config.name}
+      </span>
+      {config.cost > 0 && !isLocked && (
         <span className={`text-xs font-vt323 leading-none mt-1 ${canAfford ? 'text-yellow-300' : 'text-red-400'}`}>C${config.cost}</span>
+      )}
+      {isLocked && (
+         <span className="text-[10px] text-slate-400 mt-1">Pop {config.unlockPop}</span>
       )}
     </button>
   );
@@ -104,7 +114,9 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
   isGeneratingGoal,
   aiEnabled,
   onOpenID,
-  onOpenMarket
+  onOpenMarket,
+  onOpenPolicies,
+  hasCityHall
 }) => {
   const newsRef = useRef<HTMLDivElement>(null);
 
@@ -115,6 +127,7 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
   }, [newsFeed]);
 
   const satisfactionColor = stats.satisfaction.total > 70 ? 'text-green-400' : stats.satisfaction.total > 40 ? 'text-yellow-400' : 'text-red-400';
+  const energyColor = stats.energy.balance >= 0 ? 'text-yellow-300' : 'text-red-500 animate-pulse';
 
   return (
     <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 font-vt323 text-lg z-10">
@@ -135,7 +148,7 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
             </div>
             <div className="w-px h-8 bg-slate-700"></div>
             <div className="flex flex-col">
-                <span className="text-slate-400 uppercase text-sm tracking-wider">Habitantes</span>
+                <span className="text-slate-400 uppercase text-sm tracking-wider">Pop.</span>
                 <span className="text-2xl text-cyan-300">{stats.population.toLocaleString()}</span>
             </div>
             <div className="w-px h-8 bg-slate-700"></div>
@@ -143,6 +156,15 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
                 <span className="text-slate-400 uppercase text-sm tracking-wider">Satisfação</span>
                 <span className={`text-2xl ${satisfactionColor}`}>{stats.satisfaction.total}%</span>
             </div>
+            <div className="w-px h-8 bg-slate-700"></div>
+            {/* Energy Stats */}
+            <div className="flex flex-col" title={`Produção: ${stats.energy.produced} | Consumo: ${stats.energy.consumed}`}>
+                <span className="text-slate-400 uppercase text-sm tracking-wider">Energia</span>
+                <span className={`text-2xl flex items-center gap-1 ${energyColor}`}>
+                    ⚡ {stats.energy.balance > 0 ? '+' : ''}{stats.energy.balance}
+                </span>
+            </div>
+
             <div className="flex-grow"></div>
             <div className="flex flex-col items-end">
                 <span className="text-slate-400 uppercase text-sm">
@@ -161,6 +183,18 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
                 <span className="text-2xl">📈</span>
                 <span className="text-xs uppercase">Bolsa</span>
             </button>
+
+            {/* Policies Button (Only if CityHall) */}
+            {hasCityHall && (
+                <button 
+                    onClick={onOpenPolicies}
+                    className="bg-purple-800 hover:bg-purple-700 text-white p-3 rounded-md border-2 border-purple-500 shadow-xl flex flex-col items-center justify-center h-full w-20 transition-all active:translate-y-1"
+                    title="Políticas Públicas"
+                >
+                    <span className="text-2xl">📜</span>
+                    <span className="text-xs uppercase">Leis</span>
+                </button>
+            )}
 
             {/* ID Digital Button */}
             <button 
@@ -240,6 +274,7 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
                 isSelected={selectedTool === type}
                 onClick={() => onSelectTool(type)}
                 cookies={stats.cookies}
+                population={stats.population}
               />
             ))}
           </div>

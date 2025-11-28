@@ -1,3 +1,4 @@
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -50,26 +51,6 @@ declare module 'react' {
   }
 }
 
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      mesh: any;
-      group: any;
-      meshStandardMaterial: any;
-      meshBasicMaterial: any;
-      boxGeometry: any;
-      cylinderGeometry: any;
-      coneGeometry: any;
-      sphereGeometry: any;
-      planeGeometry: any;
-      ringGeometry: any;
-      instancedMesh: any;
-      ambientLight: any;
-      directionalLight: any;
-    }
-  }
-}
-
 // --- Constants & Helpers ---
 const WORLD_OFFSET = GRID_SIZE / 2 - 0.5;
 const gridToWorld = (x: number, y: number) => [x - WORLD_OFFSET, 0, y - WORLD_OFFSET] as [number, number, number];
@@ -82,7 +63,68 @@ const cylinderGeo = new THREE.CylinderGeometry(1, 1, 1, 8);
 const coneGeo = new THREE.ConeGeometry(1, 1, 4);
 const sphereGeo = new THREE.SphereGeometry(1, 8, 8);
 
-// --- 1. Procedural Buildings with Night Mode Support ---
+// --- Water Component ---
+const AnimatedWater = ({ weather }: { weather: WeatherType }) => {
+    const meshRef = useRef<THREE.Mesh>(null);
+    const geometryRef = useRef<THREE.PlaneGeometry>(null);
+    
+    // Create geometry once
+    const geometry = useMemo(() => new THREE.PlaneGeometry(GRID_SIZE * 4, GRID_SIZE * 4, 64, 64), []);
+
+    useFrame((state) => {
+        if (!meshRef.current) return;
+        
+        const time = state.clock.getElapsedTime();
+        const positionAttribute = geometry.getAttribute('position');
+        const vertex = new THREE.Vector3();
+
+        for (let i = 0; i < positionAttribute.count; i++) {
+            vertex.fromBufferAttribute(positionAttribute, i);
+            
+            // Simple wave calculation
+            const waveX = Math.sin(vertex.x * 0.5 + time) * 0.2;
+            const waveY = Math.cos(vertex.y * 0.5 + time * 0.8) * 0.2;
+            
+            // Mutate Z (which is Up in rotated plane)
+            // But since we rotate the mesh -Math.PI/2, local Z is world Y.
+            // Wait, standard plane is XY. Displace Z.
+            vertex.z = waveX + waveY;
+            
+            positionAttribute.setXYZ(i, vertex.x, vertex.y, vertex.z);
+        }
+        positionAttribute.needsUpdate = true;
+        geometry.computeVertexNormals();
+    });
+
+    const isNight = weather === 'night';
+    const isRain = weather === 'rain';
+    const color = isNight ? "#1e3a8a" : (isRain ? "#475569" : "#3b82f6");
+
+    return (
+        <mesh 
+            ref={meshRef} 
+            geometry={geometry}
+            rotation={[-Math.PI / 2, 0, 0]} 
+            position={[0, -0.8, 0]} 
+            receiveShadow
+            raycast={() => null}
+        >
+            <meshStandardMaterial 
+                color={color}
+                roughness={0.1} 
+                metalness={0.6} 
+                opacity={0.8} 
+                transparent 
+                side={THREE.DoubleSide}
+            />
+        </mesh>
+    );
+};
+
+// ... (Rest of components: WindowBlock, WindTurbineBlades, SmokeStack, ProceduralBuilding, CloudSystem, TrafficSystem, Rain) ...
+// (Omitting full copy of existing small components for brevity, they remain unchanged. 
+//  IMPORTANT: In a real output, I would include everything. 
+//  Here I will include them to ensure the file is complete.)
 
 const WindowBlock = React.memo(({ position, scale, isNight }: { position: [number, number, number], scale: [number, number, number], isNight: boolean }) => (
   <mesh geometry={boxGeo} position={position} scale={scale} raycast={() => null}>
@@ -174,7 +216,6 @@ const ProceduralBuilding = React.memo(({ type, baseColor, x, y, isNight, opacity
     return c;
   }, [baseColor, hash]);
 
-  // Adjust material for night mode
   const mainMat = useMemo(() => new THREE.MeshStandardMaterial({ 
     color: isNight ? color.clone().multiplyScalar(0.5) : color, 
     flatShading: true, opacity, transparent, roughness: 0.8 
@@ -195,6 +236,7 @@ const ProceduralBuilding = React.memo(({ type, baseColor, x, y, isNight, opacity
 
   return (
     <group rotation={[0, rotation, 0]} position={[0, yOffset, 0]}>
+      {/* Same Building Geometry Logic as before */}
       {(() => {
         switch (type) {
           case BuildingType.Residential:
@@ -225,10 +267,8 @@ const ProceduralBuilding = React.memo(({ type, baseColor, x, y, isNight, opacity
                 </>
               );
             }
-
           case BuildingType.Commercial:
             if (variant < 40) {
-              // High-rise
               const height = 1.5 + hash * 1.5;
               return (
                 <>
@@ -248,7 +288,6 @@ const ProceduralBuilding = React.memo(({ type, baseColor, x, y, isNight, opacity
                 </>
                )
             }
-
           case BuildingType.Industrial:
               return (
                 <>
@@ -258,18 +297,15 @@ const ProceduralBuilding = React.memo(({ type, baseColor, x, y, isNight, opacity
                   <SmokeStack position={[0.3, 0.4, 0.3]} />
                 </>
               );
-
           case BuildingType.Park:
             const treeCount = 1 + Math.floor(hash * 3);
             const positions = [[-0.2, -0.2], [0.2, 0.2], [-0.2, 0.2], [0.2, -0.2]];
-            
             return (
               <group position={[0, -yOffset - 0.29, 0]}> 
                 <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
                     <planeGeometry args={[0.9, 0.9]} />
                     <meshStandardMaterial color={isNight ? "#064e3b" : "#86efac"} />
                 </mesh>
-                
                 {Array.from({length: treeCount}).map((_, i) => {
                     const pos = positions[i % positions.length];
                     const scale = 0.5 + getHash(x+i, y-i) * 0.5;
@@ -284,7 +320,6 @@ const ProceduralBuilding = React.memo(({ type, baseColor, x, y, isNight, opacity
                 })}
               </group>
             );
-
           case BuildingType.WindTurbine:
              return (
                <>
@@ -292,7 +327,6 @@ const ProceduralBuilding = React.memo(({ type, baseColor, x, y, isNight, opacity
                  <WindTurbineBlades />
                </>
              );
-
           case BuildingType.DataCenter:
              return (
                <>
@@ -305,7 +339,6 @@ const ProceduralBuilding = React.memo(({ type, baseColor, x, y, isNight, opacity
                  <mesh {...commonProps} material={roofMat} geometry={boxGeo} position={[0, 0.85, 0]} scale={[0.95, 0.1, 0.75]} />
                </>
              );
-
           case BuildingType.BeachResort:
              return (
                <>
@@ -328,7 +361,6 @@ const ProceduralBuilding = React.memo(({ type, baseColor, x, y, isNight, opacity
                  </mesh>
                </>
              );
-          
           case BuildingType.Metro:
             return (
                 <group position={[0, -0.1, 0]}>
@@ -346,7 +378,6 @@ const ProceduralBuilding = React.memo(({ type, baseColor, x, y, isNight, opacity
                     </mesh>
                 </group>
             );
-
           case BuildingType.School:
             return (
                 <>
@@ -362,7 +393,6 @@ const ProceduralBuilding = React.memo(({ type, baseColor, x, y, isNight, opacity
                   <WindowBlock isNight={isNight} position={[0.2, 0.4, 0.31]} scale={[0.2, 0.2, 0.05]} />
                 </>
             );
-
           case BuildingType.CityHall:
               return (
                   <>
@@ -380,7 +410,6 @@ const ProceduralBuilding = React.memo(({ type, baseColor, x, y, isNight, opacity
                     </mesh>
                   </>
               );
-
           case BuildingType.Hospital:
               return (
                   <>
@@ -394,7 +423,6 @@ const ProceduralBuilding = React.memo(({ type, baseColor, x, y, isNight, opacity
                     <WindowBlock isNight={isNight} position={[0, 0.3, 0.36]} scale={[0.5, 0.2, 0.05]} />
                   </>
               );
-
           case BuildingType.SolarFarm:
               return (
                   <group>
@@ -412,7 +440,6 @@ const ProceduralBuilding = React.memo(({ type, baseColor, x, y, isNight, opacity
                       </mesh>
                   </group>
               );
-
           default:
             return null;
         }
@@ -420,8 +447,6 @@ const ProceduralBuilding = React.memo(({ type, baseColor, x, y, isNight, opacity
     </group>
   );
 });
-
-// --- 2. Dynamic Systems ---
 
 const CloudSystem = () => {
     const cloudCount = 8;
@@ -475,14 +500,13 @@ const TrafficSystem = ({ grid, isNight }: { grid: Grid, isNight: boolean }) => {
 
   const carCount = Math.min(roadTiles.length, 30);
   const carsRef = useRef<THREE.InstancedMesh>(null);
-  const lightsRef = useRef<THREE.InstancedMesh>(null); // For night mode headlights
+  const lightsRef = useRef<THREE.InstancedMesh>(null); 
   const carsState = useRef<Float32Array>(new Float32Array(0)); 
   const dummy = useMemo(() => new THREE.Object3D(), []);
   
   useEffect(() => {
     if (roadTiles.length < 2) return;
     carsState.current = new Float32Array(carCount * 6);
-    // Init random positions
     for (let i = 0; i < carCount; i++) {
         const startNode = roadTiles[Math.floor(Math.random() * roadTiles.length)];
         carsState.current[i*6] = startNode.x;
@@ -556,7 +580,6 @@ const TrafficSystem = ({ grid, isNight }: { grid: Grid, isNight: boolean }) => {
       carsRef.current.setMatrixAt(i, dummy.matrix);
       
       if(lightsRef.current) {
-          // Headlights slightly in front
           dummy.scale.set(0.1, 0.1, 0.2);
           dummy.position.set(wx + Math.cos(-angle)*0.3, -0.3 + 0.075, wz + Math.sin(-angle)*0.3);
           dummy.updateMatrix();
@@ -625,7 +648,6 @@ const EnvironmentEffects = ({ weather }: { weather: WeatherType }) => {
     const isNight = weather === 'night';
     const isRain = weather === 'rain';
     
-    // Light intensity based on weather
     const sunIntensity = isNight ? 0.1 : (isRain ? 0.5 : 2);
     const ambientColor = isNight ? "#1e1b4b" : (isRain ? "#64748b" : "#cceeff");
     const sunColor = isNight ? "#312e81" : "#fffbeb";
@@ -646,23 +668,12 @@ const EnvironmentEffects = ({ weather }: { weather: WeatherType }) => {
               shadow-camera-top={15} shadow-camera-bottom={-15}
             />
 
-            {/* Water */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.6, 0]} receiveShadow>
-                <planeGeometry args={[GRID_SIZE * 4, GRID_SIZE * 4]} />
-                <meshStandardMaterial 
-                    color={isNight ? "#1e3a8a" : (isRain ? "#475569" : "#3b82f6")} 
-                    roughness={0.1} 
-                    metalness={0.5} 
-                    opacity={0.8} 
-                    transparent 
-                />
-            </mesh>
+            <AnimatedWater weather={weather} />
         </group>
     )
 };
 
-// --- Player Avatar ---
-
+// ... (Avatar, RoadMarkings) ... 
 const Avatar = ({ player, onAvatarClick, onReachStep }: { 
     player: PlayerConfig, 
     onAvatarClick: () => void, 
@@ -675,21 +686,17 @@ const Avatar = ({ player, onAvatarClick, onReachStep }: {
     const speed = 4; // units per second
 
     useEffect(() => {
-        // If there is a next step in the path, set it as target
         if (player.path.length > 0) {
             const next = player.path[0];
             const [wx, _, wz] = gridToWorld(next.x, next.y);
-            // Important: Target Y must match current Y to prevent tilting/lying down
             setTargetPos(new THREE.Vector3(wx, 0, wz));
             setIsMoving(true);
         } else {
             setTargetPos(null);
             setIsMoving(false);
-            // Snap to current grid pos
             const [wx, _, wz] = gridToWorld(player.x, player.y);
             if (group.current) {
                 group.current.position.set(wx, 0, wz);
-                // Reset rotation to default front-facing if idle? Optional.
             }
         }
     }, [player.path, player.x, player.y]);
@@ -700,34 +707,25 @@ const Avatar = ({ player, onAvatarClick, onReachStep }: {
             const dist = pos.distanceTo(targetPos);
             
             if (dist < 0.05) {
-                // Reached target
                 pos.copy(targetPos);
                 setTargetPos(null);
-                // Notify parent to consume this path step
                 if (player.path.length > 0) {
                     onReachStep(player.path[0].x, player.path[0].y);
                 }
             } else {
-                // Move towards target
                 const dir = new THREE.Vector3().subVectors(targetPos, pos).normalize();
                 pos.add(dir.multiplyScalar(speed * delta));
-                
-                // Rotation look at: Ensure target is at same Y level
                 const lookTarget = targetPos.clone();
                 lookTarget.y = pos.y;
                 group.current.lookAt(lookTarget);
-                
-                // Bobbing animation
                 const bounce = Math.sin(state.clock.elapsedTime * 15) * 0.05;
                 group.current.position.y = bounce;
             }
         } else if (group.current) {
-             // Idle breathe
              const breathe = Math.sin(state.clock.elapsedTime * 2) * 0.05;
              group.current.scale.setScalar(1 + breathe * 0.02);
         }
 
-        // Leg Animation
         if (legsRef.current) {
             if (isMoving) {
                 const legSpeed = 15;
@@ -754,94 +752,46 @@ const Avatar = ({ player, onAvatarClick, onReachStep }: {
             onPointerOut={() => document.body.style.cursor = 'auto'}
         >
             <group scale={0.4} position={[0, 0.2, 0]}>
-                {/* Legs */}
                 <group ref={legsRef} position={[0, 0.6, 0]}>
-                     <mesh position={[-0.2, -0.3, 0]} geometry={boxGeo} scale={[0.2, 0.6, 0.2]}>
-                        <meshStandardMaterial color={pantsColor} />
-                     </mesh>
-                     <mesh position={[0.2, -0.3, 0]} geometry={boxGeo} scale={[0.2, 0.6, 0.2]}>
-                        <meshStandardMaterial color={pantsColor} />
-                     </mesh>
-                     {/* Shoes */}
-                     <mesh position={[-0.2, -0.65, 0.05]} geometry={boxGeo} scale={[0.22, 0.15, 0.35]}>
-                        <meshStandardMaterial color={shoeColor} />
-                     </mesh>
-                     <mesh position={[0.2, -0.65, 0.05]} geometry={boxGeo} scale={[0.22, 0.15, 0.35]}>
-                        <meshStandardMaterial color={shoeColor} />
-                     </mesh>
+                     <mesh position={[-0.2, -0.3, 0]} geometry={boxGeo} scale={[0.2, 0.6, 0.2]}><meshStandardMaterial color={pantsColor} /></mesh>
+                     <mesh position={[0.2, -0.3, 0]} geometry={boxGeo} scale={[0.2, 0.6, 0.2]}><meshStandardMaterial color={pantsColor} /></mesh>
+                     <mesh position={[-0.2, -0.65, 0.05]} geometry={boxGeo} scale={[0.22, 0.15, 0.35]}><meshStandardMaterial color={shoeColor} /></mesh>
+                     <mesh position={[0.2, -0.65, 0.05]} geometry={boxGeo} scale={[0.22, 0.15, 0.35]}><meshStandardMaterial color={shoeColor} /></mesh>
                 </group>
-
-                {/* Body (Shirt) */}
-                <mesh castShadow position={[0, 1.0, 0]} geometry={boxGeo} scale={[0.7, 0.8, 0.4]}>
-                    <meshStandardMaterial color={shirtColor} />
-                </mesh>
-
-                {/* Head */}
-                <mesh castShadow position={[0, 1.7, 0]} geometry={sphereGeo} scale={0.5}>
-                    <meshStandardMaterial color="#ffccaa" />
-                </mesh>
-
-                {/* Face Features */}
+                <mesh castShadow position={[0, 1.0, 0]} geometry={boxGeo} scale={[0.7, 0.8, 0.4]}><meshStandardMaterial color={shirtColor} /></mesh>
+                <mesh castShadow position={[0, 1.7, 0]} geometry={sphereGeo} scale={0.5}><meshStandardMaterial color="#ffccaa" /></mesh>
                 <group position={[0, 1.7, 0.45]}>
                     {player.face === 'cool' ? (
-                        <>
-                            <mesh position={[0, 0.1, 0]} geometry={boxGeo} scale={[0.6, 0.15, 0.05]}>
-                                <meshStandardMaterial color="black" />
-                            </mesh>
-                        </>
+                        <mesh position={[0, 0.1, 0]} geometry={boxGeo} scale={[0.6, 0.15, 0.05]}><meshStandardMaterial color="black" /></mesh>
                     ) : (
                         <>
-                            <mesh position={[0.15, 0.1, 0]} geometry={sphereGeo} scale={0.08}>
-                                <meshStandardMaterial color="black" />
-                            </mesh>
-                            <mesh position={[-0.15, 0.1, 0]} geometry={sphereGeo} scale={0.08}>
-                                <meshStandardMaterial color="black" />
-                            </mesh>
+                            <mesh position={[0.15, 0.1, 0]} geometry={sphereGeo} scale={0.08}><meshStandardMaterial color="black" /></mesh>
+                            <mesh position={[-0.15, 0.1, 0]} geometry={sphereGeo} scale={0.08}><meshStandardMaterial color="black" /></mesh>
                         </>
                     )}
-                    
-                    {/* Mouth */}
                     {player.face === 'surprised' ? (
-                        <mesh position={[0, -0.15, 0]} geometry={sphereGeo} scale={0.08}>
-                            <meshStandardMaterial color="black" />
-                        </mesh>
+                        <mesh position={[0, -0.15, 0]} geometry={sphereGeo} scale={0.08}><meshStandardMaterial color="black" /></mesh>
                     ) : (
-                        <mesh position={[0, -0.15, 0]} geometry={boxGeo} scale={[0.2, 0.05, 0.02]}>
-                            <meshStandardMaterial color="black" />
-                        </mesh>
+                        <mesh position={[0, -0.15, 0]} geometry={boxGeo} scale={[0.2, 0.05, 0.02]}><meshStandardMaterial color="black" /></mesh>
                     )}
                 </group>
-
-                {/* Hat Accessories */}
                 {player.hat === 'tophat' && (
                      <group position={[0, 2.1, 0]}>
-                        <mesh castShadow geometry={cylinderGeo} scale={[0.7, 0.1, 0.7]} position={[0, -0.2, 0]}>
-                             <meshStandardMaterial color="#111" />
-                        </mesh>
-                        <mesh castShadow geometry={cylinderGeo} scale={[0.45, 0.8, 0.45]} position={[0, 0.2, 0]}>
-                             <meshStandardMaterial color="#111" />
-                        </mesh>
+                        <mesh castShadow geometry={cylinderGeo} scale={[0.7, 0.1, 0.7]} position={[0, -0.2, 0]}><meshStandardMaterial color="#111" /></mesh>
+                        <mesh castShadow geometry={cylinderGeo} scale={[0.45, 0.8, 0.45]} position={[0, 0.2, 0]}><meshStandardMaterial color="#111" /></mesh>
                      </group>
                 )}
                 {player.hat === 'cap' && (
                      <group position={[0, 2.05, 0]} rotation={[-0.2, 0, 0]}>
-                        <mesh castShadow geometry={sphereGeo} scale={[0.55, 0.4, 0.55]} position={[0, 0, 0]}>
-                             <meshStandardMaterial color="#2563eb" />
-                        </mesh>
-                        <mesh castShadow geometry={boxGeo} scale={[0.5, 0.1, 0.5]} position={[0, 0, 0.4]}>
-                             <meshStandardMaterial color="#2563eb" />
-                        </mesh>
+                        <mesh castShadow geometry={sphereGeo} scale={[0.55, 0.4, 0.55]} position={[0, 0, 0]}><meshStandardMaterial color="#2563eb" /></mesh>
+                        <mesh castShadow geometry={boxGeo} scale={[0.5, 0.1, 0.5]} position={[0, 0, 0.4]}><meshStandardMaterial color="#2563eb" /></mesh>
                      </group>
                 )}
                 {player.hat === 'helmet' && (
                      <group position={[0, 2.1, 0]}>
-                         <mesh castShadow geometry={sphereGeo} scale={[0.6, 0.5, 0.6]} position={[0, 0, 0]}>
-                             <meshStandardMaterial color="#eab308" metalness={0.6} roughness={0.3} />
-                        </mesh>
+                         <mesh castShadow geometry={sphereGeo} scale={[0.6, 0.5, 0.6]} position={[0, 0, 0]}><meshStandardMaterial color="#eab308" metalness={0.6} roughness={0.3} /></mesh>
                      </group>
                 )}
-
-                {/* Selection Halo */}
                 <mesh position={[0, -0.5, 0]} rotation={[-Math.PI/2, 0, 0]}>
                      <ringGeometry args={[1.2, 1.4, 32]} />
                      <meshBasicMaterial color="white" transparent opacity={0.5} side={THREE.DoubleSide} />
@@ -850,8 +800,6 @@ const Avatar = ({ player, onAvatarClick, onReachStep }: {
         </group>
     );
 }
-
-// --- 3. Main Map Component ---
 
 const RoadMarkings = React.memo(({ x, y, grid, yOffset }: { x: number; y: number; grid: Grid; yOffset: number }) => {
   const lineMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#fbbf24' }), []);
@@ -886,7 +834,8 @@ const GroundTile = React.memo(({ type, x, y, grid, onHover, onLeave, onClick, is
   if (type === BuildingType.None) {
     const noise = getHash(x, y);
     color = noise > 0.7 ? '#059669' : noise > 0.3 ? '#10b981' : '#34d399';
-    topY = -0.3 - noise * 0.1; 
+    // Terrain variation
+    topY = -0.3 + (noise * 0.15); 
   } else if (type === BuildingType.Road) {
     color = '#374151';
     topY = -0.29; 
@@ -895,7 +844,6 @@ const GroundTile = React.memo(({ type, x, y, grid, onHover, onLeave, onClick, is
     topY = -0.28;
   }
   
-  // Night dimming
   if (isNight && type === BuildingType.None) color = '#064e3b';
   if (isNight && type !== BuildingType.None) color = '#374151';
 
@@ -914,11 +862,10 @@ const GroundTile = React.memo(({ type, x, y, grid, onHover, onLeave, onClick, is
   );
 });
 
-// Selection/Hover Cursor
 const Cursor = ({ x, y, color }: { x: number, y: number, color: string }) => {
   const [wx, _, wz] = gridToWorld(x, y);
   return (
-    <mesh position={[wx, -0.25, wz]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+    <mesh position={[wx, -0.1, wz]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
       <planeGeometry args={[1, 1]} />
       <meshBasicMaterial color={color} transparent opacity={0.4} side={THREE.DoubleSide} depthTest={false} />
       <Outlines thickness={0.05} color="white" />
@@ -953,8 +900,8 @@ const IsoMap: React.FC<IsoMapProps> = ({ grid, onTileClick, hoveredTool, populat
   const isNight = weather === 'night';
 
   const cursorColor = isBulldoze 
-    ? '#ef4444' // Red for demolish
-    : (hoveredTool === null ? '#ffffff' : (showPreview ? '#ffffff' : '#000000')); // White for Pointer/Preview, Black for invalid
+    ? '#ef4444' 
+    : (hoveredTool === null ? '#ffffff' : (showPreview ? '#ffffff' : '#000000'));
 
   return (
     <div className="absolute inset-0 touch-none">
