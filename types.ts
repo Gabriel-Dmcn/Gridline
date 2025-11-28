@@ -80,3 +80,14 @@ export interface NewsItem {
   text: string;
   type: 'positive' | 'negative' | 'neutral';
 }
+
+export type HatType = 'none' | 'cap' | 'tophat' | 'helmet';
+
+export interface PlayerConfig {
+  name: string;
+  color: string;
+  hat: HatType;
+  x: number;
+  y: number;
+  path: {x: number, y: number}[]; // Movement queue
+}

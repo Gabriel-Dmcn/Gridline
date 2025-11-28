@@ -1,3 +1,4 @@
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -7,7 +8,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { MapControls, SoftShadows, Float, Outlines, OrthographicCamera } from '@react-three/drei';
 import * as THREE from 'three';
 import { MathUtils } from 'three';
-import { Grid, BuildingType, WeatherType } from '../types';
+import { Grid, BuildingType, WeatherType, PlayerConfig } from '../types';
 import { GRID_SIZE, BUILDINGS } from '../constants';
 
 // --- Constants & Helpers ---
@@ -485,6 +486,128 @@ const EnvironmentEffects = ({ weather }: { weather: WeatherType }) => {
     )
 };
 
+// --- Player Avatar ---
+
+const Avatar = ({ player, onAvatarClick, onReachStep }: { 
+    player: PlayerConfig, 
+    onAvatarClick: () => void, 
+    onReachStep: (x: number, y: number) => void 
+}) => {
+    const group = useRef<THREE.Group>(null);
+    const [targetPos, setTargetPos] = useState<THREE.Vector3 | null>(null);
+    const speed = 4; // units per second
+
+    useEffect(() => {
+        // If there is a next step in the path, set it as target
+        if (player.path.length > 0) {
+            const next = player.path[0];
+            const [wx, _, wz] = gridToWorld(next.x, next.y);
+            setTargetPos(new THREE.Vector3(wx, 0, wz));
+        } else {
+            setTargetPos(null);
+            // Snap to current grid pos
+            const [wx, _, wz] = gridToWorld(player.x, player.y);
+            if (group.current) {
+                group.current.position.set(wx, 0, wz);
+            }
+        }
+    }, [player.path, player.x, player.y]);
+
+    useFrame((state, delta) => {
+        if (targetPos && group.current) {
+            const pos = group.current.position;
+            const dist = pos.distanceTo(targetPos);
+            
+            if (dist < 0.05) {
+                // Reached target
+                pos.copy(targetPos);
+                setTargetPos(null);
+                // Notify parent to consume this path step
+                if (player.path.length > 0) {
+                    onReachStep(player.path[0].x, player.path[0].y);
+                }
+            } else {
+                // Move towards target
+                const dir = new THREE.Vector3().subVectors(targetPos, pos).normalize();
+                pos.add(dir.multiplyScalar(speed * delta));
+                
+                // Rotation look at
+                group.current.lookAt(targetPos);
+                
+                // Bobbing animation
+                const bounce = Math.sin(state.clock.elapsedTime * 15) * 0.1;
+                group.current.position.y = bounce;
+            }
+        } else if (group.current) {
+             // Idle breathe
+             const breathe = Math.sin(state.clock.elapsedTime * 2) * 0.05;
+             group.current.scale.setScalar(1 + breathe * 0.05);
+        }
+    });
+
+    return (
+        <group 
+            ref={group} 
+            position={gridToWorld(player.x, player.y)}
+            onClick={(e) => { e.stopPropagation(); onAvatarClick(); }}
+            onPointerOver={() => document.body.style.cursor = 'pointer'}
+            onPointerOut={() => document.body.style.cursor = 'auto'}
+        >
+            <group scale={0.4} position={[0, 0.2, 0]}>
+                {/* Body */}
+                <mesh castShadow position={[0, 0.75, 0]} geometry={cylinderGeo} scale={[0.6, 1.5, 0.6]}>
+                    <meshStandardMaterial color={player.color} />
+                </mesh>
+                {/* Head */}
+                <mesh castShadow position={[0, 1.8, 0]} geometry={sphereGeo} scale={0.65}>
+                    <meshStandardMaterial color="#ffccaa" />
+                </mesh>
+                {/* Eyes */}
+                <mesh position={[0.2, 1.9, 0.5]} geometry={sphereGeo} scale={0.1}>
+                    <meshStandardMaterial color="black" />
+                </mesh>
+                <mesh position={[-0.2, 1.9, 0.5]} geometry={sphereGeo} scale={0.1}>
+                    <meshStandardMaterial color="black" />
+                </mesh>
+
+                {/* Hat Accessories */}
+                {player.hat === 'tophat' && (
+                     <group position={[0, 2.3, 0]}>
+                        <mesh castShadow geometry={cylinderGeo} scale={[0.8, 0.1, 0.8]} position={[0, -0.2, 0]}>
+                             <meshStandardMaterial color="#111" />
+                        </mesh>
+                        <mesh castShadow geometry={cylinderGeo} scale={[0.5, 1, 0.5]} position={[0, 0.3, 0]}>
+                             <meshStandardMaterial color="#111" />
+                        </mesh>
+                     </group>
+                )}
+                {player.hat === 'cap' && (
+                     <group position={[0, 2.2, 0]} rotation={[-0.2, 0, 0]}>
+                        <mesh castShadow geometry={sphereGeo} scale={[0.65, 0.5, 0.65]} position={[0, 0, 0]}>
+                             <meshStandardMaterial color="#2563eb" />
+                        </mesh>
+                        <mesh castShadow geometry={boxGeo} scale={[0.6, 0.1, 0.6]} position={[0, 0, 0.4]}>
+                             <meshStandardMaterial color="#2563eb" />
+                        </mesh>
+                     </group>
+                )}
+                {player.hat === 'helmet' && (
+                     <group position={[0, 2.2, 0]}>
+                         <mesh castShadow geometry={sphereGeo} scale={[0.7, 0.6, 0.7]} position={[0, 0, 0]}>
+                             <meshStandardMaterial color="#eab308" metalness={0.6} roughness={0.3} />
+                        </mesh>
+                     </group>
+                )}
+
+                {/* Selection Halo */}
+                <mesh position={[0, -0.5, 0]} rotation={[-Math.PI/2, 0, 0]}>
+                     <ringGeometry args={[1.2, 1.4, 32]} />
+                     <meshBasicMaterial color="white" transparent opacity={0.5} side={THREE.DoubleSide} />
+                </mesh>
+            </group>
+        </group>
+    );
+}
 
 // --- 3. Main Map Component ---
 
@@ -567,9 +690,12 @@ interface IsoMapProps {
   hoveredTool: BuildingType | null;
   population: number;
   weather: WeatherType;
+  player: PlayerConfig;
+  onAvatarClick: () => void;
+  onReachStep: (x: number, y: number) => void;
 }
 
-const IsoMap: React.FC<IsoMapProps> = ({ grid, onTileClick, hoveredTool, population, weather }) => {
+const IsoMap: React.FC<IsoMapProps> = ({ grid, onTileClick, hoveredTool, population, weather, player, onAvatarClick, onReachStep }) => {
   const [hoveredTile, setHoveredTile] = useState<{x: number, y: number} | null>(null);
   const handleHover = useCallback((x: number, y: number) => setHoveredTile({ x, y }), []);
   const handleLeave = useCallback(() => setHoveredTile(null), []);
@@ -615,8 +741,16 @@ const IsoMap: React.FC<IsoMapProps> = ({ grid, onTileClick, hoveredTool, populat
             )})
           )}
 
-          <group raycast={() => null}>
+          {/* Dynamic Elements */}
+          <group>
             <TrafficSystem grid={grid} isNight={isNight} />
+            
+            <Avatar 
+                player={player} 
+                onAvatarClick={onAvatarClick} 
+                onReachStep={onReachStep}
+            />
+
             {showPreview && hoveredTile && hoveredTool && (
               <group position={[previewPos[0], 0, previewPos[2]]}>
                 <Float speed={3} rotationIntensity={0} floatIntensity={0.1} floatingRange={[0, 0.1]}>

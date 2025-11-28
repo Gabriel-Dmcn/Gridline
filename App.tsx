@@ -4,13 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Grid, TileData, BuildingType, CityStats, AIGoal, NewsItem, WeatherType, Upgrade, Stock } from './types';
+import { Grid, TileData, BuildingType, CityStats, AIGoal, NewsItem, WeatherType, Upgrade, Stock, PlayerConfig } from './types';
 import { GRID_SIZE, BUILDINGS, TICK_RATE_MS, INITIAL_COOKIES, INITIAL_UPGRADES, INITIAL_STOCKS } from './constants';
 import IsoMap from './components/IsoMap';
 import UIOverlay from './components/UIOverlay';
 import StartScreen from './components/StartScreen';
 import DigitalID from './components/DigitalID';
 import StockMarket from './components/StockMarket';
+import CharacterCreator from './components/CharacterCreator';
 import { generateCityGoal, generateNewsEvent } from './services/geminiService';
 
 const createInitialGrid = (): Grid => {
@@ -28,8 +29,47 @@ const createInitialGrid = (): Grid => {
   return grid;
 };
 
+// Simple BFS Pathfinding
+const findPath = (start: {x: number, y: number}, end: {x: number, y: number}, grid: Grid): {x: number, y: number}[] => {
+    // Only None (grass), Park, and Road are walkable
+    const isWalkable = (x: number, y: number) => {
+        if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return false;
+        const type = grid[y][x].buildingType;
+        return type === BuildingType.None || type === BuildingType.Road || type === BuildingType.Park;
+    };
+
+    if (!isWalkable(end.x, end.y)) return [];
+
+    const queue = [{ x: start.x, y: start.y, path: [] as {x: number, y: number}[] }];
+    const visited = new Set<string>();
+    visited.add(`${start.x},${start.y}`);
+
+    while (queue.length > 0) {
+        const { x, y, path } = queue.shift()!;
+
+        if (x === end.x && y === end.y) return path;
+
+        const neighbors = [
+            { x: x + 1, y }, { x: x - 1, y },
+            { x, y: y + 1 }, { x, y: y - 1 }
+        ];
+
+        for (const n of neighbors) {
+            const key = `${n.x},${n.y}`;
+            if (isWalkable(n.x, n.y) && !visited.has(key)) {
+                visited.add(key);
+                queue.push({ x: n.x, y: n.y, path: [...path, { x: n.x, y: n.y }] });
+            }
+        }
+    }
+    return [];
+};
+
 function App() {
   const [gameStarted, setGameStarted] = useState(false);
+  const [showCharCreator, setShowCharCreator] = useState(false);
+  const [isInitialCharSetup, setIsInitialCharSetup] = useState(false);
+  
   const [aiEnabled, setAiEnabled] = useState(true);
   const [showID, setShowID] = useState(false);
   const [showMarket, setShowMarket] = useState(false);
@@ -42,6 +82,17 @@ function App() {
     day: 1,
     weather: 'sunny' 
   });
+  
+  // Player Avatar State
+  const [player, setPlayer] = useState<PlayerConfig>({
+      name: 'Prefeito',
+      color: '#eab308',
+      hat: 'cap',
+      x: Math.floor(GRID_SIZE/2),
+      y: Math.floor(GRID_SIZE/2),
+      path: []
+  });
+
   // selectedTool can be null (Cursor/Pointer mode)
   const [selectedTool, setSelectedTool] = useState<BuildingType | null>(null);
   const [upgrades, setUpgrades] = useState<Upgrade[]>(INITIAL_UPGRADES);
@@ -89,10 +140,11 @@ function App() {
 
   useEffect(() => {
     if (!gameStarted) return;
-    addNewsItem({ id: Date.now().toString(), text: "Gridline OS Online. Bem-vindo, Administrador.", type: 'positive' });
-    if (aiEnabled) fetchNewGoal();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameStarted]);
+    // Initial news only after game fully starts (after char creator)
+    if (!showCharCreator) {
+        // Goal fetching is handled in game loop or separate effect, but let's ensure it starts
+    }
+  }, [gameStarted, showCharCreator]);
 
   // --- Stock Market Simulation Loop ---
   useEffect(() => {
@@ -101,24 +153,14 @@ function App() {
       const marketInterval = setInterval(() => {
           setStocks(currentStocks => {
               return currentStocks.map(stock => {
-                  // Random price movement based on volatility
                   const changePercent = (Math.random() - 0.5) * 2 * stock.volatility;
                   let newPrice = stock.price * (1 + changePercent);
-                  
-                  // Clamp price to reasonable limits (minimum 1, max 10000)
                   newPrice = Math.max(1, Math.min(10000, newPrice));
-                  
-                  // Update history (keep last 20 points)
                   const newHistory = [...stock.history, newPrice].slice(-20);
-
-                  return {
-                      ...stock,
-                      price: newPrice,
-                      history: newHistory
-                  };
+                  return { ...stock, price: newPrice, history: newHistory };
               });
           });
-      }, 5000); // Updates every 5 seconds for excitement
+      }, 5000);
 
       return () => clearInterval(marketInterval);
   }, [gameStarted]);
@@ -132,14 +174,12 @@ function App() {
       let dailyPopGrowth = 0;
       let buildingCounts: Record<string, number> = {};
 
-      // Calcular multiplicadores de upgrade
       const multipliers: Record<string, number> = {};
       Object.values(BuildingType).forEach(t => multipliers[t] = 1);
       
       upgradesRef.current.forEach(u => {
         if(u.purchased) {
            if(u.targetType === 'Global') {
-              // Simplificação: Global aumenta tudo um pouco, mas aqui vamos ignorar para focar em especificos
            } else {
               multipliers[u.targetType] *= u.multiplier;
            }
@@ -149,18 +189,14 @@ function App() {
       gridRef.current.flat().forEach(tile => {
         if (tile.buildingType !== BuildingType.None) {
           const config = BUILDINGS[tile.buildingType];
-          
           const multiplier = multipliers[tile.buildingType] || 1;
-          
           dailyCookies += config.cookieGen * multiplier;
-          dailyPopGrowth += config.popGen * multiplier; // População também escala com upgrades de eficiência
+          dailyPopGrowth += config.popGen * multiplier; 
           buildingCounts[tile.buildingType] = (buildingCounts[tile.buildingType] || 0) + 1;
         }
       });
 
-      // Arredondar para evitar floats feios na UI (C$)
       dailyCookies = Math.floor(dailyCookies);
-
       const resCount = buildingCounts[BuildingType.Residential] || 0;
       const maxPop = resCount * 50; 
 
@@ -169,7 +205,6 @@ function App() {
         if (newPop > maxPop) newPop = maxPop; 
         if (resCount === 0 && prev.population > 0) newPop = Math.max(0, prev.population - 5); 
 
-        // Weather Cycle: Simple progression Sunny -> Rain -> Sunny -> Night -> Sunny
         let nextWeather: WeatherType = prev.weather;
         if (prev.day % 10 === 0) nextWeather = 'rain';
         else if (prev.day % 10 === 2) nextWeather = 'sunny';
@@ -208,20 +243,38 @@ function App() {
     return () => clearInterval(intervalId);
   }, [fetchNews, gameStarted]);
 
+  // --- Handlers ---
+
   const handleTileClick = useCallback((x: number, y: number) => {
-    if (!gameStarted) return; 
+    if (!gameStarted || showCharCreator) return; 
 
     const currentGrid = gridRef.current;
     const currentStats = statsRef.current;
     const tool = selectedTool; 
     
-    // If no tool selected (Cursor mode), do nothing (safe mode)
-    if (tool === null) return;
+    // Mode 1: Movement (Cursor Mode)
+    if (tool === null) {
+        // Calculate Path
+        const path = findPath({x: player.x, y: player.y}, {x, y}, currentGrid);
+        if (path.length > 0) {
+            setPlayer(prev => ({ ...prev, path }));
+        } else {
+            // Can't move there logic (maybe shake cursor?)
+        }
+        return;
+    }
 
+    // Mode 2: Building/Demolish
     if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return;
 
     const currentTile = currentGrid[y][x];
     const buildingConfig = BUILDINGS[tool];
+
+    // Don't build on top of player
+    if (x === player.x && y === player.y) {
+        addNewsItem({id: Date.now().toString(), text: "Não pode construir em cima do prefeito!", type: 'negative'});
+        return;
+    }
 
     if (tool === BuildingType.None) {
       if (currentTile.buildingType !== BuildingType.None) {
@@ -248,10 +301,30 @@ function App() {
         addNewsItem({id: Date.now().toString() + Math.random(), text: `Precisa de mais Cookies para ${buildingConfig.name}.`, type: 'negative'});
       }
     }
-  }, [selectedTool, addNewsItem, gameStarted]);
+  }, [selectedTool, addNewsItem, gameStarted, showCharCreator, player]);
+
+  const handleAvatarClick = () => {
+     setShowCharCreator(true);
+     setIsInitialCharSetup(false);
+  };
+
+  const handleReachStep = (x: number, y: number) => {
+      setPlayer(prev => {
+          const newPath = [...prev.path];
+          // Remove the first element (the step we just reached)
+          if(newPath.length > 0 && newPath[0].x === x && newPath[0].y === y) {
+              newPath.shift();
+          }
+          return {
+              ...prev,
+              x: x,
+              y: y,
+              path: newPath
+          }
+      });
+  };
 
   const handleSelectTool = (type: BuildingType | null) => {
-    // If clicking the already selected tool, deselect it (toggle to cursor)
     if (selectedTool === type) {
       setSelectedTool(null);
     } else {
@@ -286,11 +359,9 @@ function App() {
     }
   };
   
-  // Market Actions
   const handleBuyStock = (stockId: string, amount: number) => {
       const stockIndex = stocks.findIndex(s => s.id === stockId);
       if (stockIndex === -1) return;
-      
       const stock = stocks[stockIndex];
       const totalCost = stock.price * amount;
       
@@ -300,16 +371,14 @@ function App() {
           newStocks[stockIndex] = { ...stock, owned: stock.owned + amount };
           setStocks(newStocks);
       } else {
-          addNewsItem({id: Date.now().toString(), text: "Fundo insuficiente para compra de ações.", type: 'negative'});
+          addNewsItem({id: Date.now().toString(), text: "Fundo insuficiente.", type: 'negative'});
       }
   };
 
   const handleSellStock = (stockId: string, amount: number) => {
       const stockIndex = stocks.findIndex(s => s.id === stockId);
       if (stockIndex === -1) return;
-      
       const stock = stocks[stockIndex];
-      
       if (stock.owned >= amount) {
           const totalValue = stock.price * amount;
           setStats(prev => ({ 
@@ -325,10 +394,20 @@ function App() {
 
   const handleStart = (enabled: boolean) => {
     setAiEnabled(enabled);
-    setGameStarted(true);
+    setIsInitialCharSetup(true);
+    setShowCharCreator(true);
   };
 
-  // Helper to count buildings for UI
+  const handleSaveCharacter = (config: PlayerConfig) => {
+    setPlayer(config);
+    setShowCharCreator(false);
+    if (isInitialCharSetup) {
+        setGameStarted(true);
+        addNewsItem({ id: Date.now().toString(), text: "Gridline OS Online. Bem-vindo, Prefeito " + config.name, type: 'positive' });
+        if (aiEnabledRef.current) fetchNewGoal();
+    }
+  };
+
   const getBuildingCounts = () => {
       const counts: Record<string, number> = {};
       grid.flat().forEach(tile => {
@@ -349,13 +428,24 @@ function App() {
         hoveredTool={selectedTool}
         population={stats.population}
         weather={stats.weather}
+        player={player}
+        onAvatarClick={handleAvatarClick}
+        onReachStep={handleReachStep}
       />
       
-      {!gameStarted && (
+      {!gameStarted && !showCharCreator && (
         <StartScreen onStart={handleStart} />
       )}
 
-      {gameStarted && (
+      {showCharCreator && (
+          <CharacterCreator 
+            initialConfig={player}
+            onSave={handleSaveCharacter}
+            isInitialSetup={isInitialCharSetup}
+          />
+      )}
+
+      {gameStarted && !showCharCreator && (
         <UIOverlay
           stats={stats}
           selectedTool={selectedTool}
