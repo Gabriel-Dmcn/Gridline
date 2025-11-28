@@ -1,3 +1,4 @@
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -33,6 +34,17 @@ export interface Upgrade {
   targetType: BuildingType | 'Global';
   multiplier: number; // Ex: 1.5 aumenta em 50%
   purchased: boolean;
+}
+
+export interface Stock {
+  id: string;
+  symbol: string;
+  name: string;
+  description: string;
+  price: number;
+  volatility: number; // Quão agressiva é a mudança de preço (0.01 a 0.1)
+  owned: number;
+  history: number[]; // Histórico de preços para o gráfico
 }
 
 export interface TileData {

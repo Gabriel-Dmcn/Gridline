@@ -1,3 +1,4 @@
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -16,6 +17,7 @@ interface UIOverlayProps {
   isGeneratingGoal: boolean;
   aiEnabled: boolean;
   onOpenID: () => void;
+  onOpenMarket: () => void;
 }
 
 const tools = [
@@ -97,7 +99,8 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
   onClaimReward,
   isGeneratingGoal,
   aiEnabled,
-  onOpenID
+  onOpenID,
+  onOpenMarket
 }) => {
   const newsRef = useRef<HTMLDivElement>(null);
 
@@ -137,6 +140,16 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
                 <span className="text-xl text-white">Dia {stats.day}</span>
             </div>
             </div>
+
+            {/* Market Button */}
+            <button 
+                onClick={onOpenMarket}
+                className="bg-emerald-800 hover:bg-emerald-700 text-white p-3 rounded-md border-2 border-emerald-500 shadow-xl flex flex-col items-center justify-center h-full w-20 transition-all active:translate-y-1"
+                title="Bolsa de Valores"
+            >
+                <span className="text-2xl">📈</span>
+                <span className="text-xs uppercase">Bolsa</span>
+            </button>
 
             {/* ID Digital Button */}
             <button 

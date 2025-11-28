@@ -1,14 +1,16 @@
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Grid, TileData, BuildingType, CityStats, AIGoal, NewsItem, WeatherType, Upgrade } from './types';
-import { GRID_SIZE, BUILDINGS, TICK_RATE_MS, INITIAL_COOKIES, INITIAL_UPGRADES } from './constants';
+import { Grid, TileData, BuildingType, CityStats, AIGoal, NewsItem, WeatherType, Upgrade, Stock } from './types';
+import { GRID_SIZE, BUILDINGS, TICK_RATE_MS, INITIAL_COOKIES, INITIAL_UPGRADES, INITIAL_STOCKS } from './constants';
 import IsoMap from './components/IsoMap';
 import UIOverlay from './components/UIOverlay';
 import StartScreen from './components/StartScreen';
 import DigitalID from './components/DigitalID';
+import StockMarket from './components/StockMarket';
 import { generateCityGoal, generateNewsEvent } from './services/geminiService';
 
 const createInitialGrid = (): Grid => {
@@ -30,6 +32,7 @@ function App() {
   const [gameStarted, setGameStarted] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(true);
   const [showID, setShowID] = useState(false);
+  const [showMarket, setShowMarket] = useState(false);
 
   const [grid, setGrid] = useState<Grid>(createInitialGrid);
   const [stats, setStats] = useState<CityStats>({ 
@@ -42,6 +45,7 @@ function App() {
   // selectedTool can be null (Cursor/Pointer mode)
   const [selectedTool, setSelectedTool] = useState<BuildingType | null>(null);
   const [upgrades, setUpgrades] = useState<Upgrade[]>(INITIAL_UPGRADES);
+  const [stocks, setStocks] = useState<Stock[]>(INITIAL_STOCKS);
   
   const [currentGoal, setCurrentGoal] = useState<AIGoal | null>(null);
   const [isGeneratingGoal, setIsGeneratingGoal] = useState(false);
@@ -88,6 +92,35 @@ function App() {
     addNewsItem({ id: Date.now().toString(), text: "Gridline OS Online. Bem-vindo, Administrador.", type: 'positive' });
     if (aiEnabled) fetchNewGoal();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameStarted]);
+
+  // --- Stock Market Simulation Loop ---
+  useEffect(() => {
+      if (!gameStarted) return;
+
+      const marketInterval = setInterval(() => {
+          setStocks(currentStocks => {
+              return currentStocks.map(stock => {
+                  // Random price movement based on volatility
+                  const changePercent = (Math.random() - 0.5) * 2 * stock.volatility;
+                  let newPrice = stock.price * (1 + changePercent);
+                  
+                  // Clamp price to reasonable limits (minimum 1, max 10000)
+                  newPrice = Math.max(1, Math.min(10000, newPrice));
+                  
+                  // Update history (keep last 20 points)
+                  const newHistory = [...stock.history, newPrice].slice(-20);
+
+                  return {
+                      ...stock,
+                      price: newPrice,
+                      history: newHistory
+                  };
+              });
+          });
+      }, 5000); // Updates every 5 seconds for excitement
+
+      return () => clearInterval(marketInterval);
   }, [gameStarted]);
 
   // --- Game Loop ---
@@ -252,6 +285,43 @@ function App() {
         addNewsItem({id: Date.now().toString(), text: `Upgrade Adquirido: ${upgrade.name}`, type: 'positive'});
     }
   };
+  
+  // Market Actions
+  const handleBuyStock = (stockId: string, amount: number) => {
+      const stockIndex = stocks.findIndex(s => s.id === stockId);
+      if (stockIndex === -1) return;
+      
+      const stock = stocks[stockIndex];
+      const totalCost = stock.price * amount;
+      
+      if (stats.cookies >= totalCost) {
+          setStats(prev => ({ ...prev, cookies: prev.cookies - totalCost }));
+          const newStocks = [...stocks];
+          newStocks[stockIndex] = { ...stock, owned: stock.owned + amount };
+          setStocks(newStocks);
+      } else {
+          addNewsItem({id: Date.now().toString(), text: "Fundo insuficiente para compra de ações.", type: 'negative'});
+      }
+  };
+
+  const handleSellStock = (stockId: string, amount: number) => {
+      const stockIndex = stocks.findIndex(s => s.id === stockId);
+      if (stockIndex === -1) return;
+      
+      const stock = stocks[stockIndex];
+      
+      if (stock.owned >= amount) {
+          const totalValue = stock.price * amount;
+          setStats(prev => ({ 
+              ...prev, 
+              cookies: prev.cookies + totalValue,
+              lifetimeCookies: prev.lifetimeCookies + totalValue
+          }));
+          const newStocks = [...stocks];
+          newStocks[stockIndex] = { ...stock, owned: stock.owned - amount };
+          setStocks(newStocks);
+      }
+  };
 
   const handleStart = (enabled: boolean) => {
     setAiEnabled(enabled);
@@ -296,6 +366,7 @@ function App() {
           isGeneratingGoal={isGeneratingGoal}
           aiEnabled={aiEnabled}
           onOpenID={() => setShowID(true)}
+          onOpenMarket={() => setShowMarket(true)}
         />
       )}
 
@@ -306,6 +377,16 @@ function App() {
             onPurchaseUpgrade={handlePurchaseUpgrade}
             onClose={() => setShowID(false)}
             buildingCounts={getBuildingCounts()}
+          />
+      )}
+
+      {showMarket && (
+          <StockMarket
+            stats={stats}
+            stocks={stocks}
+            onBuy={handleBuyStock}
+            onSell={handleSellStock}
+            onClose={() => setShowMarket(false)}
           />
       )}
     </div>

@@ -1,8 +1,9 @@
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
-import { BuildingConfig, BuildingType, Upgrade } from './types';
+import { BuildingConfig, BuildingType, Upgrade, Stock } from './types';
 
 // Configurações do Mapa
 export const GRID_SIZE = 15;
@@ -140,5 +141,38 @@ export const INITIAL_UPGRADES: Upgrade[] = [
     targetType: BuildingType.WindTurbine,
     multiplier: 1.5,
     purchased: false,
+  }
+];
+
+export const INITIAL_STOCKS: Stock[] = [
+  {
+    id: 's1',
+    symbol: 'CRNCH',
+    name: 'Cookie Crunch Ltd',
+    description: 'Conglomerado de alimentos básicos.',
+    price: 10,
+    volatility: 0.02, // Baixa volatilidade
+    owned: 0,
+    history: [10, 10, 10, 10, 10, 10, 10, 10, 10, 10]
+  },
+  {
+    id: 's2',
+    symbol: 'VOLT',
+    name: 'Gridline Energy',
+    description: 'Infraestrutura e energia renovável.',
+    price: 50,
+    volatility: 0.05, // Média volatilidade
+    owned: 0,
+    history: [50, 50, 50, 50, 50, 50, 50, 50, 50, 50]
+  },
+  {
+    id: 's3',
+    symbol: 'NANO',
+    name: 'NanoFuture Tech',
+    description: 'Startups de alta tecnologia e IA.',
+    price: 100,
+    volatility: 0.15, // Alta volatilidade (risco alto)
+    owned: 0,
+    history: [100, 100, 100, 100, 100, 100, 100, 100, 100, 100]
   }
 ];
