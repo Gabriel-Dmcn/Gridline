@@ -5,7 +5,7 @@
 */
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { MapControls, SoftShadows, Float, Outlines, OrthographicCamera } from '@react-three/drei';
+import { MapControls, SoftShadows, Float, OrthographicCamera } from '@react-three/drei';
 import * as THREE from 'three';
 import { MathUtils } from 'three';
 import { Grid, BuildingType, WeatherType, PlayerConfig } from '../types';
@@ -22,6 +22,7 @@ const boxGeo = new THREE.BoxGeometry(1, 1, 1);
 const cylinderGeo = new THREE.CylinderGeometry(1, 1, 1, 8);
 const coneGeo = new THREE.ConeGeometry(1, 1, 4);
 const sphereGeo = new THREE.SphereGeometry(1, 8, 8);
+const planeGeo = new THREE.PlaneGeometry(1, 1);
 
 // --- Componentes Visuais ---
 
@@ -177,11 +178,9 @@ const CloudSystem = React.memo(() => {
     return <instancedMesh ref={meshRef} args={[boxGeo, undefined, cloudCount]} raycast={() => null}><meshStandardMaterial color="white" transparent opacity={0.6} flatShading /></instancedMesh>;
 });
 
-// --- PEDESTRIAN SYSTEM (CORREÇÃO DE OBJETO ESTRANHO) ---
+// --- PEDESTRIAN SYSTEM ---
 const PedestrianSystem = React.memo(({ grid, residentialCount }: { grid: Grid, residentialCount: number }) => {
-    // Limite máximo de instâncias
     const MAX_NPCS = 60;
-    // Cálculo: 2 NPCs por casa, mín 3, máx 60
     const activeCount = Math.min(Math.max(3, residentialCount * 2), MAX_NPCS);
     
     const meshRef = useRef<THREE.InstancedMesh>(null);
@@ -189,7 +188,6 @@ const PedestrianSystem = React.memo(({ grid, residentialCount }: { grid: Grid, r
     const dummy = useMemo(() => new THREE.Object3D(), []);
     const dummyHead = useMemo(() => new THREE.Object3D(), []);
 
-    // Agentes persistem usando useRef
     const agents = useRef<{x: number, z: number, targetX: number, targetZ: number, speed: number, color: string}[]>([]);
     
     const walkableTiles = useMemo(() => {
@@ -215,7 +213,6 @@ const PedestrianSystem = React.memo(({ grid, residentialCount }: { grid: Grid, r
     useFrame((state, delta) => {
         if (!meshRef.current || !headRef.current || walkableTiles.length === 0) return;
 
-        // 1. Reconciliation: Ajusta tamanho da população ativa
         if (agents.current.length < activeCount) {
             const start = getRandomTile();
             agents.current.push({
@@ -225,7 +222,6 @@ const PedestrianSystem = React.memo(({ grid, residentialCount }: { grid: Grid, r
             agents.current.pop();
         }
 
-        // 2. Atualiza Agentes ATIVOS
         agents.current.forEach((agent, i) => {
             const dx = agent.targetX - agent.x;
             const dz = agent.targetZ - agent.z;
@@ -254,9 +250,8 @@ const PedestrianSystem = React.memo(({ grid, residentialCount }: { grid: Grid, r
             headRef.current!.setMatrixAt(i, dummyHead.matrix);
         });
 
-        // 3. LIMPEZA: Oculta instâncias INATIVAS (Crucial para remover o "objeto estranho")
         for (let i = agents.current.length; i < MAX_NPCS; i++) {
-             dummy.scale.set(0, 0, 0); // Escala zero para esconder
+             dummy.scale.set(0, 0, 0); 
              dummy.updateMatrix();
              meshRef.current.setMatrixAt(i, dummy.matrix);
              headRef.current.setMatrixAt(i, dummy.matrix);
@@ -302,7 +297,10 @@ const TrafficSystem = React.memo(({ grid, isNight, population }: { grid: Grid, i
   const dummy = useMemo(() => new THREE.Object3D(), []);
   
   useEffect(() => {
-    if (roadTiles.length < 2) return;
+    if (roadTiles.length < 2) {
+        carsState.current = new Float32Array(0);
+        return;
+    }
     const newSize = carCount * 6;
     if (carsState.current.length !== newSize) {
         carsState.current = new Float32Array(newSize);
@@ -402,7 +400,7 @@ const TrafficSystem = React.memo(({ grid, isNight, population }: { grid: Grid, i
   );
 });
 
-// ... (Avatar, RoadMarkings, GroundTile, Cursor) - Sem alterações na lógica, apenas mantendo imports
+// ... (Avatar, RoadMarkings, GroundTile)
 const Avatar = ({ player, onAvatarClick, onReachStep }: { player: PlayerConfig, onAvatarClick: () => void, onReachStep: (x: number, y: number) => void }) => {
     const group = useRef<THREE.Group>(null);
     const legsRef = useRef<THREE.Group>(null);
@@ -493,7 +491,23 @@ const GroundTile = React.memo(({ type, x, y, grid, onHover, onLeave, onClick, is
 
 const Cursor = React.memo(({ x, y, color }: { x: number, y: number, color: string }) => {
   const [wx, _, wz] = gridToWorld(x, y);
-  return <mesh position={[wx, -0.1, wz]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}><planeGeometry args={[1, 1]} /><meshBasicMaterial color={color} transparent opacity={0.4} side={THREE.DoubleSide} depthTest={false} /><Outlines thickness={0.05} color="white" /></mesh>;
+  
+  // A simple wireframe mesh is more stable than Outlines and doesn't cause artifacts
+  return (
+    <group position={[wx, 0.02, wz]}>
+        {/* Main Cursor Plane (transparent) */}
+        <mesh rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+            <planeGeometry args={[0.9, 0.9]} />
+            <meshBasicMaterial color={color} transparent opacity={0.4} side={THREE.DoubleSide} />
+        </mesh>
+        
+        {/* Wireframe Border */}
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]} raycast={() => null}>
+             <planeGeometry args={[1, 1]} />
+             <meshBasicMaterial color={color} wireframe />
+        </mesh>
+    </group>
+  );
 });
 
 const Rain = ({ isRaining }: { isRaining: boolean }) => {
@@ -584,7 +598,12 @@ const IsoMap: React.FC<IsoMapProps> = ({ grid, onTileClick, hoveredTool, populat
               return (
               <React.Fragment key={`${x}-${y}`}>
                 <GroundTile type={tile.buildingType} x={x} y={y} grid={grid} onHover={handleHover} onLeave={handleLeave} onClick={onTileClick} isNight={isNight} />
-                <group position={[wx, 0, wz]} raycast={() => null}>
+                <group 
+                    position={[wx, 0, wz]}
+                    onClick={(e) => { e.stopPropagation(); onTileClick(x, y); }}
+                    onPointerEnter={(e) => { e.stopPropagation(); handleHover(x, y); }}
+                    onPointerOut={(e) => { e.stopPropagation(); handleLeave(); }}
+                >
                     {tile.buildingType !== BuildingType.None && tile.buildingType !== BuildingType.Road && (
                       <ProceduralBuilding type={tile.buildingType} baseColor={BUILDINGS[tile.buildingType].color} x={x} y={y} isNight={isNight} />
                     )}

@@ -18,7 +18,7 @@ const CityReport: React.FC<CityReportProps> = ({ stats, buildingCounts, onClose 
   let totalInvestment = 0;
   Object.entries(buildingCounts).forEach(([type, count]) => {
     if (type !== BuildingType.None && type !== BuildingType.Road) {
-      totalInvestment += (BUILDINGS[type as BuildingType].cost * count);
+      totalInvestment += (BUILDINGS[type as BuildingType].cost * (count as number));
     }
   });
 
@@ -91,7 +91,7 @@ const CityReport: React.FC<CityReportProps> = ({ stats, buildingCounts, onClose 
                         <div className="flex justify-between items-center">
                             <span className="text-slate-300">Total de Edifícios:</span>
                             <span className="text-xl text-white">
-                                {Object.values(buildingCounts).reduce((a, b) => a + b, 0)}
+                                {Object.values(buildingCounts).reduce((a: number, b: number) => a + b, 0)}
                             </span>
                         </div>
                         <div className="h-px bg-slate-700 my-2"></div>

@@ -356,7 +356,14 @@ function App() {
       });
   };
 
-  const handleSelectTool = (type: BuildingType | null) => setSelectedTool(type);
+  const handleSelectTool = (type: BuildingType | null) => {
+      // Toggle logic: if clicking the same tool, deselect it (return to cursor mode)
+      if (selectedTool === type) {
+          setSelectedTool(null);
+      } else {
+          setSelectedTool(type);
+      }
+  };
 
   const handleClaimReward = () => {
     if (currentGoal && currentGoal.completed) {
@@ -441,7 +448,7 @@ function App() {
   const residentialCount = buildingCounts[BuildingType.Residential] || 0;
 
   return (
-    <div className={`relative w-screen h-screen overflow-hidden selection:bg-transparent selection:text-transparent ${skyColor} transition-colors duration-[2000ms]`}>
+    <div className={`relative w-screen h-screen overflow-hidden ${skyColor} transition-colors duration-[2000ms]`}>
       
       <IsoMap 
         grid={grid} 
