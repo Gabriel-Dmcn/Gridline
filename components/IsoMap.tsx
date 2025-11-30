@@ -1,4 +1,3 @@
-
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -51,7 +50,7 @@ const grassBladeGeo = new THREE.ConeGeometry(0.05, 0.25, 3); // Geometria da Gra
 
 const AnimatedWater = React.memo(({ weather }: { weather: WeatherType }) => {
     const meshRef = useRef<THREE.Mesh>(null);
-    const geometry = useMemo(() => new THREE.PlaneGeometry(GRID_SIZE * 4, GRID_SIZE * 4, 128, 128), []);
+    const geometry = useMemo(() => new THREE.PlaneGeometry(GRID_SIZE * 5, GRID_SIZE * 5, 128, 128), []);
 
     useFrame((state) => {
         if (!meshRef.current) return;
@@ -75,7 +74,7 @@ const AnimatedWater = React.memo(({ weather }: { weather: WeatherType }) => {
 
     const isNight = weather === 'night';
     const isRain = weather === 'rain';
-    const color = isNight ? "#475569" : (isRain ? "#475569" : "#3b82f6");
+    const color = isNight ? "#1e293b" : (isRain ? "#475569" : "#3b82f6");
 
     return (
         <mesh ref={meshRef} geometry={geometry} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.8, 0]} receiveShadow raycast={() => null}>
@@ -206,6 +205,153 @@ const CloudSystem = React.memo(() => {
     return <instancedMesh ref={meshRef} args={[boxGeo, undefined, cloudCount]} raycast={() => null}><meshStandardMaterial color="white" transparent opacity={0.6} flatShading /></instancedMesh>;
 });
 
+// --- AIR TRAFFIC SYSTEM (LINEAR - ROTAS COMERCIAIS) ---
+const AirTrafficSystem = React.memo(() => {
+    const planesRef = useRef<{x: number, y: number, z: number, speed: number}[]>([]);
+    
+    // Inicializa 3 aviões em rotas retas
+    if (planesRef.current.length === 0) {
+        planesRef.current = [
+            { x: -50, y: 12, z: -5, speed: 8 },  // Rota 1
+            { x: -70, y: 15, z: 5, speed: 6 },   // Rota 2 (Mais alto)
+            { x: -90, y: 10, z: 0, speed: 10 },  // Rota 3 (Mais rápido)
+        ];
+    }
+    
+    const groupRef = useRef<THREE.Group>(null);
+    
+    useFrame((_, delta) => {
+        if (!groupRef.current) return;
+        
+        planesRef.current.forEach((plane, i) => {
+            // Movimento linear no eixo X
+            plane.x += plane.speed * delta;
+            
+            // Se passar do limite, volta para o início (loop infinito linear)
+            if (plane.x > 50) {
+                plane.x = -50 - Math.random() * 30; // Randomiza o respawn para não ficarem sincronizados
+                plane.z = getRandomRange(-10, 10);  // Leve variação na rota
+            }
+            
+            const planeGroup = groupRef.current!.children[i];
+            if (planeGroup) {
+                planeGroup.position.set(plane.x, plane.y, plane.z);
+                // CORREÇÃO: Rotação 0 para alinhar a fuselagem com o movimento (Eixo X)
+                planeGroup.rotation.y = 0; 
+                // Leve balanço nas asas para dar vida (Roll - Eixo X)
+                planeGroup.rotation.x = Math.sin(Date.now() * 0.002 + i) * 0.05;
+            }
+        });
+    });
+
+    return (
+        <group ref={groupRef} raycast={() => null}>
+            {planesRef.current.map((_, i) => (
+                <group key={i}>
+                    {/* Fuselagem (Escala maior no X define a frente) */}
+                    <mesh geometry={boxGeo} scale={[2.5, 0.4, 0.4]} castShadow>
+                        <meshStandardMaterial color="#f8fafc" />
+                    </mesh>
+                    {/* Asas */}
+                    <mesh position={[0.2, 0, 0]} geometry={boxGeo} scale={[0.8, 0.1, 3.5]} castShadow>
+                        <meshStandardMaterial color="#cbd5e1" />
+                    </mesh>
+                     {/* Cauda Vertical */}
+                    <mesh position={[-1, 0.5, 0]} geometry={boxGeo} scale={[0.5, 0.8, 0.1]} castShadow>
+                        <meshStandardMaterial color="#ef4444" />
+                    </mesh>
+                    {/* Cauda Horizontal */}
+                    <mesh position={[-1, 0.1, 0]} geometry={boxGeo} scale={[0.4, 0.1, 1.2]} castShadow>
+                        <meshStandardMaterial color="#cbd5e1" />
+                    </mesh>
+                    {/* Cockpit */}
+                    <mesh position={[0.8, 0.2, 0]} geometry={boxGeo} scale={[0.5, 0.3, 0.35]}>
+                        <meshStandardMaterial color="#0ea5e9" />
+                    </mesh>
+                </group>
+            ))}
+        </group>
+    );
+});
+
+// --- WATER TRAFFIC SYSTEM (LINEAR - ROTAS DE NAVEGAÇÃO) ---
+const WaterTrafficSystem = React.memo(() => {
+    // Definindo rotas lineares nas bordas do mapa
+    const boatsRef = useRef<{x: number, z: number, speed: number, direction: number}[]>([]);
+    const groupRef = useRef<THREE.Group>(null);
+    
+    const LIMIT = 45; // Limite de despawn
+    const SPAWN = 45; // Ponto de spawn
+
+    if (boatsRef.current.length === 0) {
+        boatsRef.current = [
+            // Lane 1: Fundo (Z positivo), movendo para a Direita (+X)
+            { x: -30, z: 12, speed: 2, direction: 1 },
+            { x: -10, z: 14, speed: 1.5, direction: 1 },
+            
+            // Lane 2: Topo (Z negativo), movendo para a Esquerda (-X)
+            { x: 20, z: -12, speed: 2.2, direction: -1 },
+            { x: 40, z: -15, speed: 1.8, direction: -1 },
+        ];
+    }
+
+    useFrame((state, delta) => {
+        if (!groupRef.current) return;
+        
+        boatsRef.current.forEach((boat, i) => {
+            // Movimento Linear
+            boat.x += boat.speed * boat.direction * delta;
+
+            // Lógica de Respawn Linear
+            if (boat.direction === 1 && boat.x > LIMIT) {
+                boat.x = -SPAWN - Math.random() * 10;
+            } else if (boat.direction === -1 && boat.x < -LIMIT) {
+                boat.x = SPAWN + Math.random() * 10;
+            }
+            
+            // Bobbing (boiar)
+            const bob = Math.sin(state.clock.elapsedTime * 2 + i) * 0.05;
+
+            const boatGroup = groupRef.current!.children[i];
+            if (boatGroup) {
+                boatGroup.position.set(boat.x, -0.75 + bob, boat.z);
+                // Rotação baseada na direção (Direita ou Esquerda)
+                // Se move para direita (1), rotação 0 (Frente para +X). Se move para esquerda (-1), rotação PI (Frente para -X).
+                boatGroup.rotation.y = boat.direction === 1 ? 0 : Math.PI; 
+            }
+        });
+    });
+
+    return (
+        <group ref={groupRef} raycast={() => null}>
+             {boatsRef.current.map((_, i) => (
+                <group key={i}>
+                    {/* Casco */}
+                    <mesh position={[0, 0.2, 0]} geometry={boxGeo} scale={[2.5, 0.6, 1.0]} castShadow>
+                        <meshStandardMaterial color="#ffffff" />
+                    </mesh>
+                    {/* Parte inferior (vermelha) */}
+                    <mesh position={[0, -0.1, 0]} geometry={boxGeo} scale={[2.4, 0.2, 0.9]}>
+                        <meshStandardMaterial color="#dc2626" />
+                    </mesh>
+                    {/* Cabine */}
+                    <mesh position={[-0.4, 0.6, 0]} geometry={boxGeo} scale={[0.8, 0.6, 0.8]} castShadow>
+                        <meshStandardMaterial color="#3b82f6" />
+                    </mesh>
+                    {/* Chaminé */}
+                    <mesh position={[-0.4, 1.0, 0]} geometry={cylinderGeo} scale={[0.15, 0.5, 0.15]}>
+                        <meshStandardMaterial color="#1e293b" />
+                    </mesh>
+                     {/* Carga (Containers) */}
+                     <mesh position={[0.6, 0.6, 0]} geometry={boxGeo} scale={[0.5, 0.5, 0.6]} castShadow>
+                        <meshStandardMaterial color="#f59e0b" />
+                    </mesh>
+                </group>
+             ))}
+        </group>
+    );
+});
+
 // --- GRASS SYSTEM (Grama 3D) ---
 const GrassSystem = React.memo(({ grid, isNight }: { grid: Grid, isNight: boolean }) => {
     const meshRef = useRef<THREE.InstancedMesh>(null);
@@ -309,7 +455,21 @@ const PedestrianSystem = React.memo(({ grid, residentialCount }: { grid: Grid, r
     }, [getRandomTile]);
 
     useFrame((state, delta) => {
-        if (!meshRef.current || !headRef.current || walkableTiles.length === 0) return;
+        if (!meshRef.current || !headRef.current) return;
+        
+        // Se não houver tiles andáveis, garante que todos estejam ocultos e retorna
+        if (walkableTiles.length === 0) {
+            for(let i=0; i<MAX_NPCS; i++) {
+                 dummy.scale.set(0, 0, 0);
+                 dummy.position.set(0, -1000, 0);
+                 dummy.updateMatrix();
+                 meshRef.current.setMatrixAt(i, dummy.matrix);
+                 headRef.current.setMatrixAt(i, dummy.matrix);
+            }
+            meshRef.current.instanceMatrix.needsUpdate = true;
+            headRef.current.instanceMatrix.needsUpdate = true;
+            return;
+        }
 
         // Loop principal para todas as instâncias (ativas e inativas)
         for(let i=0; i<MAX_NPCS; i++) {
@@ -492,7 +652,21 @@ const TrafficSystem = React.memo(({ grid, isNight, population }: { grid: Grid, i
   }, []);
 
   useFrame(() => {
-    if (!carsRef.current || roadTiles.length < 2) return;
+    if (!carsRef.current || !lightsRef.current) return;
+
+    // Se não houver estrada, esconde todos
+    if (roadTiles.length < 2) {
+         for(let i=0; i<MAX_CARS; i++) {
+            dummy.scale.set(0, 0, 0);
+            dummy.position.set(0, -1000, 0);
+            dummy.updateMatrix();
+            carsRef.current.setMatrixAt(i, dummy.matrix);
+            lightsRef.current.setMatrixAt(i, dummy.matrix);
+         }
+         carsRef.current.instanceMatrix.needsUpdate = true;
+         lightsRef.current.instanceMatrix.needsUpdate = true;
+         return;
+    }
 
     for (let i = 0; i < MAX_CARS; i++) {
       if (i < activeCarCount) {
@@ -822,6 +996,10 @@ const IsoMap: React.FC<IsoMapProps> = ({ grid, onTileClick, hoveredTool, populat
             <TrafficSystem grid={grid} isNight={isNight} population={population} />
             <MetroSystem grid={grid} />
             <PedestrianSystem grid={grid} residentialCount={residentialCount} />
+            
+            {/* Novos Sistemas de Tráfego (Lineares) */}
+            <AirTrafficSystem />
+            <WaterTrafficSystem />
 
             <Avatar player={player} onAvatarClick={onAvatarClick} onReachStep={onReachStep} />
             {showPreview && hoveredTile && hoveredTool && (
