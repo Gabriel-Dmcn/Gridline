@@ -125,6 +125,7 @@ export interface SatisfactionStats {
  */
 export interface CityStats {
   cookies: number;         // Saldo atual de Cookies (Dinheiro)
+  incomeRate: number;      // Taxa de ganho de Cookies por minuto (novo)
   lifetimeCookies: number; // Total acumulado na carreira (usado para calcular nível)
   population: number;      // População total
   day: number;             // Contador de dias passados
@@ -139,9 +140,10 @@ export interface CityStats {
 }
 
 /**
- * Meta (Quest) gerada pela Inteligência Artificial.
+ * Meta (Quest) gerada pela Inteligência Artificial (ou regras locais).
  */
 export interface AIGoal {
+  id?: string; // ID único para controle de repetição
   description: string; // Descrição da missão em texto
   targetType: 'population' | 'cookies' | 'building_count'; // Tipo de objetivo a alcançar
   targetValue: number; // Valor numérico alvo

@@ -1,4 +1,3 @@
-
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -6,77 +5,106 @@
 import { AIGoal, BuildingType, CityStats, Grid, NewsItem } from "../types";
 
 // --- Geração de Metas (Local - Sem IA) ---
+// Agora as metas são geradas dinamicamente com base no estado ATUAL + incremento.
+// Isso evita que a missão já nasça completada ou que seja a mesma de antes.
 
 const TEMPLATES_QUESTS = [
     {
-        condition: (stats: CityStats) => stats.population < 20,
-        generate: () => ({
-            description: "A cidade está deserta! Construa novas zonas residenciais para atrair moradores.",
+        id: 'pop_growth',
+        condition: (stats: CityStats) => stats.population < 500,
+        generate: (stats: CityStats) => ({
+            id: 'pop_growth_' + Date.now(),
+            description: "A cidade precisa crescer! Aumente a população.",
             targetType: 'population' as const,
-            targetValue: 50,
-            reward: 200
+            targetValue: stats.population + 30, // Meta incremental
+            reward: 300
         })
     },
     {
+        id: 'energy_crisis',
         condition: (stats: CityStats) => stats.energy.balance < 5,
-        generate: () => ({
-            description: "Crise energética iminente! Precisamos de mais energia limpa (Eólica ou Solar).",
+        generate: (stats: CityStats) => ({
+            id: 'energy_crisis_' + Date.now(),
+            description: "Precisamos de margem energética! Construa fontes de energia.",
             targetType: 'building_count' as const,
             buildingType: BuildingType.WindTurbine,
-            targetValue: 3,
+            targetValue: 2, // Aqui é contagem total, o App verifica se aumentou
             reward: 350
         })
     },
     {
-        condition: (stats: CityStats) => stats.satisfaction.total < 60,
-        generate: () => ({
-            description: "Os cidadãos estão infelizes. Construa parques para melhorar o ambiente.",
+        id: 'satisfaction_boost',
+        condition: (stats: CityStats) => stats.satisfaction.total < 70,
+        generate: (stats: CityStats) => ({
+            id: 'satisfaction_boost_' + Date.now(),
+            description: "Melhore o ambiente urbano com Parques.",
             targetType: 'building_count' as const,
             buildingType: BuildingType.Park,
-            targetValue: 4,
+            targetValue: 3, // O jogo vai checar a quantidade total
+            reward: 200
+        })
+    },
+    {
+        id: 'economic_boom',
+        condition: (stats: CityStats) => true,
+        generate: (stats: CityStats) => ({
+            id: 'economic_boom_' + Date.now(),
+            description: "Encha os cofres da prefeitura.",
+            targetType: 'cookies' as const,
+            targetValue: stats.cookies + 500, // Meta incremental
             reward: 150
         })
     },
     {
-        condition: (stats: CityStats) => stats.cookies < 500,
-        generate: () => ({
-            description: "Os cofres estão vazios. Invista em Comércio para gerar impostos.",
-            targetType: 'cookies' as const,
-            targetValue: 1000,
-            reward: 100
-        })
-    },
-    {
-        condition: (stats: CityStats) => true, // Fallback genérico
+        id: 'expansion',
+        condition: (stats: CityStats) => true, // Fallback
         generate: (stats: CityStats) => ({
-            description: "Expansão urbana! Aumente a população da Gridline.",
+            id: 'expansion_' + Date.now(),
+            description: "Grande expansão urbana! Atraia mais residentes.",
             targetType: 'population' as const,
-            targetValue: Math.floor(stats.population * 1.5) + 50,
+            targetValue: Math.floor(stats.population * 1.2) + 20,
             reward: 500
         })
     }
 ];
 
-export const generateCityGoal = async (stats: CityStats, grid: Grid): Promise<AIGoal | null> => {
-    // Simula um delay de "pensamento"
-    await new Promise(resolve => setTimeout(resolve, 500));
+export const generateCityGoal = async (stats: CityStats, grid: Grid, lastGoalId?: string): Promise<AIGoal | null> => {
+    // Simula delay
+    await new Promise(resolve => setTimeout(resolve, 300));
 
-    // Procura uma quest que se encaixe na situação atual
-    const template = TEMPLATES_QUESTS.find(t => t.condition(stats));
+    // Filtra templates possíveis
+    let availableTemplates = TEMPLATES_QUESTS.filter(t => t.condition(stats));
     
-    if (template) {
-        return { ...template.generate(stats), completed: false };
+    // Filtro rigoroso para evitar repetição do mesmo tipo de missão
+    if (lastGoalId && availableTemplates.length > 1) {
+        // Extrai o ID base da missão anterior (ex: remove o timestamp)
+        const lastBaseId = TEMPLATES_QUESTS.find(t => lastGoalId.startsWith(t.id))?.id;
+        if (lastBaseId) {
+             availableTemplates = availableTemplates.filter(t => t.id !== lastBaseId);
+        }
+    }
+    
+    // Se filtrou tudo (todos eram iguais ao anterior), reseta
+    if (availableTemplates.length === 0) {
+        availableTemplates = TEMPLATES_QUESTS;
     }
 
-    // Default
-    return {
-        description: "Construa uma Prefeitura para organizar a gestão da cidade.",
-        targetType: 'building_count',
-        buildingType: BuildingType.CityHall,
-        targetValue: 1,
-        reward: 2000,
-        completed: false
-    };
+    const template = availableTemplates[Math.floor(Math.random() * availableTemplates.length)];
+    
+    if (template) {
+        // Se for building_count, precisamos garantir que o targetValue seja > contagem atual
+        const goal = template.generate(stats);
+        
+        if (goal.targetType === 'building_count' && goal.buildingType) {
+            let currentCount = 0;
+            grid.flat().forEach(t => { if(t.buildingType === goal.buildingType) currentCount++; });
+            goal.targetValue = currentCount + (goal.targetValue || 1);
+        }
+
+        return { ...goal, completed: false };
+    }
+
+    return null;
 };
 
 // --- Geração de Notícias (Local - Sem IA) ---
@@ -106,7 +134,6 @@ const TEMPLATES_NEWS = {
 };
 
 export const generateNewsEvent = async (stats: CityStats): Promise<NewsItem | null> => {
-    // Escolhe o tipo baseado na satisfação
     let type: 'positive' | 'negative' | 'neutral' = 'neutral';
     const roll = Math.random();
 
@@ -118,7 +145,6 @@ export const generateNewsEvent = async (stats: CityStats): Promise<NewsItem | nu
         type = roll > 0.6 ? 'positive' : roll > 0.3 ? 'negative' : 'neutral';
     }
 
-    // Seleciona texto aleatório
     const list = TEMPLATES_NEWS[type];
     const text = list[Math.floor(Math.random() * list.length)];
 

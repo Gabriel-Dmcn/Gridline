@@ -108,15 +108,25 @@ const LandingPage: React.FC<LandingPageProps> = ({ onStart }) => {
 
       {/* Cookies */}
       <section id="cookie" className="py-20 px-6 bg-slate-900 border-t border-slate-700">
-          <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center gap-10">
-              <div className="md:w-1/3 text-9xl text-center animate-spin-slow">🍪</div>
+          <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-start gap-10">
+              <div className="md:w-1/3 text-9xl text-center animate-spin-slow sticky top-24">🍪</div>
               <div className="md:w-2/3">
                   <h2 className="text-5xl text-yellow-400 mb-6">Moeda Cookie</h2>
+                  
                   <p className="text-xl text-slate-300 leading-relaxed mb-4">
-                      O Cookie é a moeda oficial que pulsa na Gridline. Essencial para a economia da cidade, ela permite que os cidadãos comprem, vendam e troquem bens e serviços no mercado digital.
+                    No começo da Gridline era um projeto ambicioso, foi criada a primeira e única moeda da cidade: <strong>O Cookie</strong>.
                   </p>
-                  <p className="text-lg text-slate-400">
-                      Inspirado nos "cookies" digitais, pequenos pacotes de dados que personalizam a experiência online.
+
+                  <p className="text-lg text-slate-400 leading-relaxed mb-4 text-justify">
+                    O Cookie é a moeda oficial que pulsa na Gridline. Essencial para a economia da cidade, ela permite que os cidadãos comprem, vendem e trocam bens e serviços no mercado digital. Cada Cookie que você ganha e gasta, ajuda a fortalecer a comunidade, tornando Gridline um lugar mais dinâmico.
+                  </p>
+
+                  <p className="text-lg text-slate-400 leading-relaxed mb-4 text-justify">
+                    O nome foi inspirado nos "cookies" digitais, pequenos pacotes de dados que personalizam a experiência online. Os primeiros Cookies da história foram emitidos como recompensa aos cidadãos pioneiros por suas contribuições e conquistas como: participar de votação de urbanismo, testar sistemas digitais e ajudar a construir a cultura da nova metrópole.
+                  </p>
+                  
+                  <p className="text-lg text-slate-400 leading-relaxed text-justify">
+                    Esse sistema rapidamente se tornou a base de toda economia. Desde pagar por um serviço de transporte até comprar algo no mercado digital, o Cookie se tornou o pulso financeiro de Gridline.
                   </p>
               </div>
           </div>
@@ -126,12 +136,27 @@ const LandingPage: React.FC<LandingPageProps> = ({ onStart }) => {
       <section id="team" className="py-20 px-6 bg-slate-800">
           <div className="max-w-4xl mx-auto text-center">
               <h2 className="text-5xl text-green-400 mb-10">Gridlianos (Equipe)</h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                   {['Pablo Gabriel', 'Gabriel Damaceno', 'Matheus Augusto'].map(member => (
-                      <div key={member} className="bg-slate-900 p-4 rounded border border-slate-600">
-                          <div className="w-20 h-20 bg-slate-700 rounded-full mx-auto mb-3 flex items-center justify-center text-3xl">👨‍💻</div>
-                          <h3 className="text-xl text-white">{member}</h3>
-                          <p className="text-slate-500 text-sm">INF-11</p>
+                      <div key={member} className="bg-slate-900 p-6 rounded-xl border border-slate-600 flex flex-col items-center hover:border-green-500 transition-all hover:-translate-y-2 shadow-lg">
+                          {/* Container da Imagem */}
+                          <div className="w-32 h-32 bg-slate-700 rounded-full mb-4 overflow-hidden border-4 border-slate-500 shadow-lg relative group">
+                              <img 
+                                src={`/${member}.jpg`} 
+                                alt={member} 
+                                className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-500"
+                                onError={(e) => {
+                                    // Fallback caso a imagem não carregue
+                                    const target = e.target as HTMLImageElement;
+                                    target.style.display = 'none';
+                                    target.parentElement!.classList.add('flex', 'items-center', 'justify-center');
+                                    target.parentElement!.innerHTML = '<span class="text-5xl">👨‍💻</span>';
+                                }}
+                              />
+                          </div>
+                          <h3 className="text-2xl text-white font-bold">{member}</h3>
+                          <p className="text-green-400 text-sm tracking-widest font-mono mt-1 uppercase">Desenvolvedor</p>
+                          <p className="text-slate-500 text-xs mt-2">INF-11</p>
                       </div>
                   ))}
               </div>

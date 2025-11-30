@@ -116,6 +116,9 @@ const BuildingInspector: React.FC<BuildingInspectorProps> = ({ type, stats, avai
                     ) : (
                         availableUpgrades.map(upgrade => {
                             const canAfford = stats.cookies >= upgrade.cost;
+                            // Correção de formatação: Math.round para evitar dízimas periódicas
+                            const percent = Math.round((upgrade.multiplier - 1) * 100);
+                            
                             return (
                                 <div key={upgrade.id} className={`border-2 rounded-lg p-3 ${upgrade.purchased ? 'border-green-500 bg-green-50' : 'border-slate-300'}`}>
                                     <div className="flex justify-between items-start mb-1">
@@ -131,7 +134,7 @@ const BuildingInspector: React.FC<BuildingInspectorProps> = ({ type, stats, avai
                                     {!upgrade.purchased ? (
                                         <>
                                             <div className={`mb-2 font-bold text-sm ${canAfford ? 'text-green-600' : 'text-red-500'}`}>
-                                                {canAfford ? `+${(upgrade.multiplier - 1)*100}% Eficiência` : 'Fundos Insuficientes'}
+                                                {canAfford ? `+${percent}% Eficiência` : 'Fundos Insuficientes'}
                                             </div>
                                             
                                             <button 

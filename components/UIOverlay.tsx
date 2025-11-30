@@ -1,4 +1,3 @@
-
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -129,6 +128,7 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
 
   const satisfactionColor = stats.satisfaction.total > 70 ? 'text-green-400' : stats.satisfaction.total > 40 ? 'text-yellow-400' : 'text-red-400';
   const energyColor = stats.energy.balance >= 0 ? 'text-yellow-300' : 'text-red-500 animate-pulse';
+  const incomeColor = stats.incomeRate >= 0 ? 'text-green-400' : 'text-orange-500';
 
   return (
     <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 font-vt323 text-lg z-10">
@@ -144,7 +144,10 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
             </div>
             <div className="flex flex-col">
                 <span className="text-slate-400 uppercase text-sm tracking-wider">Saldo</span>
-                <span className="text-2xl text-yellow-400 tracking-widest">C$ {stats.cookies.toLocaleString()}</span>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl text-yellow-400 tracking-widest">C$ {stats.cookies.toLocaleString()}</span>
+                  <span className={`text-xs font-mono ${incomeColor}`}>{stats.incomeRate >= 0 ? '+' : ''}{stats.incomeRate}/dia</span>
+                </div>
             </div>
             <div className="w-px h-8 bg-slate-700"></div>
             <div className="flex flex-col">
@@ -160,7 +163,7 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
             <div className="flex flex-col" title={`Produção: ${stats.energy.produced} | Consumo: ${stats.energy.consumed}`}>
                 <span className="text-slate-400 uppercase text-sm tracking-wider">Energia</span>
                 <span className={`text-2xl flex items-center gap-1 ${energyColor}`}>
-                    ⚡ {stats.energy.balance > 0 ? '+' : ''}{stats.energy.balance}
+                    ⚡ {stats.energy.balance > 0 ? '+' : ''}{Number(stats.energy.balance.toFixed(4))}
                 </span>
             </div>
 

@@ -1,4 +1,3 @@
-
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -98,13 +97,13 @@ const CityReport: React.FC<CityReportProps> = ({ stats, buildingCounts, onClose 
                         <div className="flex justify-between items-center">
                             <span className="text-slate-300">Balanço Energético:</span>
                             <span className={`text-xl ${stats.energy.balance >= 0 ? 'text-green-400' : 'text-red-500'}`}>
-                                {stats.energy.balance >= 0 ? '+' : ''}{stats.energy.balance} MW
+                                {stats.energy.balance >= 0 ? '+' : ''}{Number(stats.energy.balance.toFixed(4))} MW
                             </span>
                         </div>
                         <div className="w-full bg-slate-700 h-4 rounded-full overflow-hidden flex text-[10px] items-center text-center font-bold relative">
                              <div className="bg-red-500 h-full flex items-center justify-center" style={{ width: `${(stats.energy.consumed / (stats.energy.produced + 1)) * 100}%` }}></div>
                              <div className="absolute inset-0 flex justify-center items-center drop-shadow-md">
-                                 {stats.energy.consumed} Consumido / {stats.energy.produced} Produzido
+                                 {Number(stats.energy.consumed.toFixed(4))} Consumido / {Number(stats.energy.produced.toFixed(4))} Produzido
                              </div>
                         </div>
                     </div>
